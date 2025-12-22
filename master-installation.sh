@@ -1,4 +1,7 @@
 #!/bin/sh
 
 # Source all installation scripts
-. ./install-stow.sh
+for f in installs/*.sh; do
+  echo "Running $f"
+  "$f"
+done
