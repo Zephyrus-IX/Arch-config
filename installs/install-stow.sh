@@ -1,3 +1,11 @@
 #!/bin/sh
 
-yay -S --noconfirm --needed stow
+# If dependencies are needed grab them first
+
+
+# Check if stow is installed already or not
+if pacman -Qi stow &> /dev/null; then
+  echo "Stow is already installed"
+else 
+  yay -S --noconfirm --needed stow
+fi
