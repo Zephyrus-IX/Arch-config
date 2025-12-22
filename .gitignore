@@ -1,0 +1,17 @@
+# Editor / temp files
+*~
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+
+# Environment / secrets
+.env
+
+# Local state (machine-specific)
+state/
+logs/
+
+# Bash leftovers
+*.bak
