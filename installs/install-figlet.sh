@@ -7,5 +7,5 @@
 if pacman -Qi figlet &> /dev/null; then
   echo "figlet is already installed"
 else
-  pacman -S --noconfirm --needed figlet
+  sudo pacman -S --noconfirm --needed figlet
 fi
