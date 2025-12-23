@@ -7,5 +7,5 @@
 if pacman -Qi cmatrix &> /dev/null; then
   echo "Cmatrix is already installed"
 else
-  pacman -S --noconfirm --needed cmatrix
+  sudo pacman -S --noconfirm --needed cmatrix
 fi

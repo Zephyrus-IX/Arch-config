@@ -7,5 +7,5 @@
 if pacman -Qi onefetch &> /dev/null; then
   echo "onefetch is already installed"
 else
-  pacman -S --noconfirm --needed onefetch
+  sudo pacman -S --noconfirm --needed onefetch
 fi
