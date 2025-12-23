@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # If dependencies are needed grab them first
-if pacman -Qi wget &> /dev/null; then
+if sudo pacman -Qi wget &> /dev/null; then
   echo "wget is already installed"
 else 
-  pacman -S --noconfirm --needed wget
+  sudo pacman -S --noconfirm --needed wget
 fi
 
 
