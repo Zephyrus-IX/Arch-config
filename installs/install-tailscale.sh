@@ -7,5 +7,5 @@
 if pacman -Qi tailscale &> /dev/null; then
   echo "tailscale is already installed"
 else
-  pacman -S --noconfirm --needed tailscale
+  sudo pacman -S --noconfirm --needed tailscale
 fi
