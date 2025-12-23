@@ -9,8 +9,8 @@ fi
 
 
 # Check if nord vpn is already installed
-if pacman -Qi nordvpn &> /dev/null; then
-  echo "nordvpn is already installed"
+if pacman -Qi nordvpn-bin &> /dev/null; then
+  echo "nordvpn-bin is already installed"
 else
-  yay -S --noconfirm --needed nordvpn
+  yay -S --noconfirm --needed nordvpn-bin
 fi
