@@ -4,8 +4,8 @@
 
 
 # Check if cowsay is installed already or not
-if pacman -Qi stow &> /dev/null; then
-  echo "Stow is already installed"
+if pacman -Qi cowsay &> /dev/null; then
+  echo "cowsay is already installed"
 else
-  yay -S --noconfirm --needed stow
+  yay -S --noconfirm --needed cowsay
 fi
