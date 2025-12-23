@@ -7,5 +7,5 @@
 if pacman -Qi openssh &> /dev/null; then
   echo "open-ssh is already installed"
 else
-  pacman -S --noconfirm --needed openssh
+  sudo pacman -S --noconfirm --needed openssh
 fi
