@@ -33,4 +33,4 @@ if pacman -Qi proton-mail-bin &> /dev/null; then
   echo "nordvpn-bin is already installed"
 else
   yay -S --noconfirm --needed proton-mail-bin
-fii
+fi
