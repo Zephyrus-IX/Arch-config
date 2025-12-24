@@ -2,32 +2,60 @@
 set -eu
 
 ###############################################################################
-# CONFIG
+# USER CONFIG (edit these)
 ###############################################################################
 
-# Directory containing install scripts
-INSTALL_DIR="installs"
+# Show installer output:
+# 1 = always show output (default)
+# 0 = only show output when a script fails
+VERBOSE=1
 
-# Exclude list by filename (basename only)
+# Exclude list by filename (basename only), one per line.
 EXCLUDE="
+install-proton-mail.sh
 "
 
-# Default type if a script doesn't specify one
+# Keep sudo alive during run (prevents timeout mid-install)
+# 1 = yes, 0 = no
+SUDO_KEEPALIVE=1
+
+# Auto-skip template scripts (recommended)
+# 1 = yes, 0 = no
+SKIP_TEMPLATES=1
+
+###############################################################################
+# SUDO WARM-UP (run anywhere as any user, without becoming root)
+###############################################################################
+# We want:
+# - pacman calls to work via sudo in installers
+# - yay/paru to run as the normal user (required for AUR builds)
+sudo -v
+
+if [ "$SUDO_KEEPALIVE" -eq 1 ]; then
+  # Refresh sudo timestamp every 60s until script exits
+  ( while :; do sudo -n -v 2>/dev/null; sleep 60; done ) &
+  SUDO_KEEPALIVE_PID=$!
+  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT INT TERM
+fi
+
+###############################################################################
+# INTERNAL CONFIG
+###############################################################################
+INSTALL_DIR="installs"
 DEFAULT_TYPE="apps"
 
 ###############################################################################
 # PRETTY OUTPUT (colors/icons)
 ###############################################################################
-
 if [ -t 1 ]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[0;33m'
-  BLUE='\033[0;34m'
-  CYAN='\033[0;36m'
-  BOLD='\033[1m'
-  DIM='\033[2m'
-  RESET='\033[0m'
+  RED="$(printf '\033[0;31m')"
+  GREEN="$(printf '\033[0;32m')"
+  YELLOW="$(printf '\033[0;33m')"
+  BLUE="$(printf '\033[0;34m')"
+  CYAN="$(printf '\033[0;36m')"
+  BOLD="$(printf '\033[1m')"
+  DIM="$(printf '\033[2m')"
+  RESET="$(printf '\033[0m')"
 else
   RED= GREEN= YELLOW= BLUE= CYAN= BOLD= DIM= RESET=
 fi
@@ -37,12 +65,12 @@ ERR="${RED}✖${RESET}"
 SKIP="${YELLOW}↷${RESET}"
 RUN="${CYAN}▶${RESET}"
 
-indent() { sed "s/^/${BLUE}│${RESET} /"; }
+# Indent installer output blocks (pipe in blue, text dimmed)
+indent() { sed "s/^/${DIM}${BLUE}│${RESET}${DIM}    /"; }
 
 ###############################################################################
 # EXCLUDE / TYPE PARSING
 ###############################################################################
-
 should_exclude() {
   base="$(basename "$1")"
   for e in $EXCLUDE; do
@@ -51,7 +79,16 @@ should_exclude() {
   return 1
 }
 
-# Map type string -> numeric weight for sorting
+is_template() {
+  # Skip install-template.sh and any *template*.sh if enabled
+  [ "$SKIP_TEMPLATES" -eq 1 ] || return 1
+  base="$(basename "$1")"
+  case "$base" in
+    *template*.sh) return 0 ;;
+  esac
+  return 1
+}
+
 type_weight() {
   case "$1" in
     base)     echo 0 ;;
@@ -60,14 +97,11 @@ type_weight() {
     services) echo 30 ;;
     apps)     echo 40 ;;
     cosmetic) echo 50 ;;
-    *)        echo 60 ;; # unknown types go last
+    *)        echo 60 ;;
   esac
 }
 
-# Extract INSTALL_TYPE=... from the script without executing it
 get_type() {
-  # allow optional spaces like: INSTALL_TYPE = apps  (we'll normalize)
-  # We keep it simple: find first matching line and strip spaces.
   t="$(
     sed -n 's/^[[:space:]]*INSTALL_TYPE[[:space:]]*=[[:space:]]*//p' "$1" \
     | head -n 1 \
@@ -81,15 +115,12 @@ get_type() {
 }
 
 ###############################################################################
-# SPINNER (start/stop)
+# SPINNER
 ###############################################################################
-
 spinner_start() {
   SPIN_MSG=$1
   SPIN_CHARS='|/-\'
   SPIN_i=0
-
-  # Hide cursor
   printf '\033[?25l' 2>/dev/null || true
 
   (
@@ -110,7 +141,6 @@ spinner_stop() {
   kill "$SPIN_PID" 2>/dev/null || true
   wait "$SPIN_PID" 2>/dev/null || true
 
-  # Clear line + show cursor
   printf "\r\033[K" 2>/dev/null || true
   printf '\033[?25h' 2>/dev/null || true
 
@@ -124,12 +154,10 @@ spinner_stop() {
 ###############################################################################
 # RUNNER
 ###############################################################################
-
 run_script() {
   f=$1
   name="$(basename "$f")"
   t="$(get_type "$f")"
-
   out="$(mktemp)"
 
   spinner_start "[$t] $name"
@@ -137,11 +165,12 @@ run_script() {
   code=$?
   spinner_stop "$code" "[$t] $name"
 
-  # Print output after completion (indented & dimmed)
-  if [ -s "$out" ]; then
-    printf "%s" "$DIM"
-    indent <"$out"
-    printf "%s" "$RESET"
+  # Print installer output as an indented block
+  if [ "$VERBOSE" -eq 1 ] || [ "$code" -ne 0 ]; then
+    if [ -s "$out" ]; then
+      indent <"$out"
+      printf "%s" "$RESET"
+    fi
   fi
 
   rm -f "$out"
@@ -151,61 +180,62 @@ run_script() {
 ###############################################################################
 # MAIN
 ###############################################################################
-
-# Ensure we have scripts
 if ! ls "$INSTALL_DIR"/*.sh >/dev/null 2>&1; then
   echo "No install scripts found in: $INSTALL_DIR/*.sh"
   exit 0
 fi
 
-# Build a sorted execution list: weight type + filename (stable)
 tmp="$(mktemp)"
+tmp_skip="$(mktemp)"
+sorted="$(mktemp)"
+
 for f in "$INSTALL_DIR"/*.sh; do
-  if should_exclude "$f"; then
+  if is_template "$f"; then
+    printf "%s\n" "$(basename "$f")" >> "$tmp_skip"
     continue
   fi
+  if should_exclude "$f"; then
+    printf "%s\n" "$(basename "$f")" >> "$tmp_skip"
+    continue
+  fi
+
   t="$(get_type "$f")"
   w="$(type_weight "$t")"
-  # pad weight to keep lexicographic sort stable
   printf "%03d %s %s\n" "$w" "$t" "$f" >> "$tmp"
 done
 
-TOTAL="$(wc -l < "$tmp" | tr -d ' ')"
+TOTAL_ALL="$(ls "$INSTALL_DIR"/*.sh 2>/dev/null | wc -l | tr -d ' ')"
+TOTAL_RUN="$(wc -l < "$tmp" | tr -d ' ')"
+TOTAL_SKIP="$(wc -l < "$tmp_skip" | tr -d ' ')"
+
+printf "%s%sMaster install%s (total: %s, run: %s, excluded: %s)\n" \
+  "$BOLD" "$CYAN" "$RESET" "$TOTAL_ALL" "$TOTAL_RUN" "$TOTAL_SKIP"
+
 RAN=0
-SKIPPED=0
 FAILED=0
 
-printf "%s%sMaster install%s (%s scripts)\n" "$BOLD" "$CYAN" "$RESET" "$TOTAL"
+# IMPORTANT: avoid a pipeline here (would run loop in a subshell in /bin/sh)
+sort -k1,1n -k2,2 -k3,3 "$tmp" > "$sorted"
 
-# Run in sorted order
-sort -k1,1n -k2,2 -k3,3 "$tmp" | while IFS= read -r line; do
-  # extract the filepath (3rd field onward)
-  # line format: "NNN type /path/to/file"
+while IFS= read -r line; do
   f="$(printf "%s" "$line" | cut -d' ' -f3-)"
-  name="$(basename "$f")"
-
-  # (Exclude list is already applied above, but keep this safe if you edit later)
-  if should_exclude "$f"; then
-    printf "%s [%s] %s\n" "$SKIP" "excluded" "$name"
-    SKIPPED=$((SKIPPED + 1))
-    continue
-  fi
-
   if run_script "$f"; then
     RAN=$((RAN + 1))
   else
     FAILED=$((FAILED + 1))
   fi
-done
+done < "$sorted"
 
-rm -f "$tmp"
+if [ "$TOTAL_SKIP" -gt 0 ]; then
+  printf "\n%sExcluded scripts:%s\n" "$BOLD" "$RESET"
+  sort "$tmp_skip" | sed "s/^/  $SKIP /"
+fi
 
-# Summary
+rm -f "$tmp" "$tmp_skip" "$sorted"
+
 printf "\n%sSUMMARY%s\n" "$BOLD" "$RESET"
 printf "  %s ran:     %s\n" "$OK" "$RAN"
-printf "  %s skipped: %s\n" "$SKIP" "$SKIPPED"
 printf "  %s failed:  %s\n" "$ERR" "$FAILED"
+printf "  %s excluded:%s\n" "$SKIP" "$TOTAL_SKIP"
 
-# Non-zero if any failed
 [ "$FAILED" -eq 0 ]
-

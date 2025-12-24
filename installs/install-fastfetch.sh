@@ -1,24 +1,53 @@
 #!/bin/sh
+set -eu
 
-# If dependencies are needed grab them first
-echo "Ensuring dependencies are met..."
+###############################################################################
+# CONFIG — change only this section
+###############################################################################
+# apps | cosmetic
+INSTALL_TYPE=apps
 
-if pacman -Qi glibc &> /dev/null; then
-  echo "glibc is already installed"
-else
-  sudo pacman -S --noconfirm --needed glibc
+PACMAN_PKGS="
+fastfetch
+"
+
+OPTIONAL_PKGS="
+"
+
+AUR_PKGS="
+"
+###############################################################################
+
+has_words() {
+  # returns 0 if $1 contains any non-whitespace characters
+  printf "%s" "$1" | tr -d '[:space:]' | grep -q .
+}
+
+install_pacman() {
+  sudo pacman -S --noconfirm --needed "$@"
+}
+
+install_aur() {
+  if command -v yay >/dev/null 2>&1; then
+    yay -S --noconfirm --needed "$@"
+  elif command -v paru >/dev/null 2>&1; then
+    paru -S --noconfirm --needed "$@"
+  else
+    echo "AUR helper not found (yay/paru)."
+    return 1
+  fi
+}
+
+# Main
+if has_words "$PACMAN_PKGS"; then
+  # word-splitting intended here
+  install_pacman $PACMAN_PKGS
 fi
 
-if pacman -Qi yyjson &> /dev/null; then
-  echo "yyjson is already installed"
-else
-  sudo pacman -S --noconfirm --needed yyjson
+if has_words "$OPTIONAL_PKGS"; then
+  install_pacman $OPTIONAL_PKGS || true
 fi
 
-
-# Check if fastfetch is installed already or not
-if pacman -Qi fastfetch &> /dev/null; then
-  echo "fastfetch is already installed"
-else
-  sudo pacman -S --noconfirm --needed fastfetch
+if has_words "$AUR_PKGS"; then
+  install_aur $AUR_PKGS
 fi
