@@ -1,6 +1,8 @@
 #!/bin/sh
 
 # If dependencies are needed grab them first
+echo "Ensuring dependencies are met..."
+
 if pacman -Qi glibc &> /dev/null; then
   echo "glibc is already installed"
 else
