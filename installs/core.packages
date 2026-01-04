@@ -10,12 +10,12 @@ xorg-xwayland
 mesa
 
 # Portals
-xdg-desktop-portal
+xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 
 # Session / login
 sddm
-uwsm # universal wayland session manager (are these comments gonna get caputured as a package argument?)
+uwsm
 
 # Menu Bar / App Launcher / Notification Manager
 waybar
