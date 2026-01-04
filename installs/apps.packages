@@ -1,0 +1,41 @@
+# Arch-config apps package list installed via install/packaging/base.sh
+
+# General user apps
+thunderbird
+nordpass-bin
+
+# Browser
+firefox
+microsoft-edge-stable-bin
+
+# File manager
+nautilus
+
+# Terminal
+ghostty
+
+# Image viewer
+imv
+
+# Git related apps
+git
+github-cli
+onefetch
+lazygit
+stow
+
+# VPNs
+tailscale
+nordvpn-bin
+nordvpn-gui
+
+# System info apps
+fastfetch
+
+# Silly CLI apps
+figlet
+cowsay
+cmatrix
+
+
+# Anything else???
