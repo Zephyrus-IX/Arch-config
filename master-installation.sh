@@ -1,5 +1,5 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 ###############################################################################
 # USER CONFIG (edit these)
@@ -10,39 +10,34 @@ set -eu
 # 0 = only show output when a script fails
 VERBOSE=1
 
-# Exclude list by filename (basename only), one per line.
-EXCLUDE="
-install-proton-mail.sh
+# Exclude list by package name (one per line). Applies to all tiers.
+EXCLUDE_PACKAGES="
 "
 
 # Keep sudo alive during run (prevents timeout mid-install)
 # 1 = yes, 0 = no
 SUDO_KEEPALIVE=1
 
-# Auto-skip template scripts (recommended)
-# 1 = yes, 0 = no
-SKIP_TEMPLATES=1
+# Prompt per tier to exclude packages interactively.
+# 1 = yes, 0 = no prompts (installs everything, minus EXCLUDE_PACKAGES)
+INTERACTIVE=1
+
+# Where your tiered package files live
+PKG_DIR="install/packaging"
+
+# If yay is needed and not installed, auto-bootstrap it from AUR.
+BOOTSTRAP_YAY=1
 
 ###############################################################################
 # SUDO WARM-UP (run anywhere as any user, without becoming root)
 ###############################################################################
-# We want:
-# - pacman calls to work via sudo in installers
-# - yay/paru to run as the normal user (required for AUR builds)
 sudo -v
 
 if [ "$SUDO_KEEPALIVE" -eq 1 ]; then
-  # Refresh sudo timestamp every 60s until script exits
   ( while :; do sudo -n -v 2>/dev/null; sleep 60; done ) &
   SUDO_KEEPALIVE_PID=$!
   trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT INT TERM
 fi
-
-###############################################################################
-# INTERNAL CONFIG
-###############################################################################
-INSTALL_DIR="installs"
-DEFAULT_TYPE="apps"
 
 ###############################################################################
 # PRETTY OUTPUT (colors/icons)
@@ -67,52 +62,6 @@ RUN="${CYAN}▶${RESET}"
 
 # Indent installer output blocks (pipe in blue, text dimmed)
 indent() { sed "s/^/${DIM}${BLUE}│${RESET}${DIM}    /"; }
-
-###############################################################################
-# EXCLUDE / TYPE PARSING
-###############################################################################
-should_exclude() {
-  base="$(basename "$1")"
-  for e in $EXCLUDE; do
-    [ "$base" = "$e" ] && return 0
-  done
-  return 1
-}
-
-is_template() {
-  # Skip install-template.sh and any *template*.sh if enabled
-  [ "$SKIP_TEMPLATES" -eq 1 ] || return 1
-  base="$(basename "$1")"
-  case "$base" in
-    *template*.sh) return 0 ;;
-  esac
-  return 1
-}
-
-type_weight() {
-  case "$1" in
-    base)     echo 0 ;;
-    helpers)  echo 10 ;;
-    core)     echo 20 ;;
-    services) echo 30 ;;
-    apps)     echo 40 ;;
-    cosmetic) echo 50 ;;
-    *)        echo 60 ;;
-  esac
-}
-
-get_type() {
-  t="$(
-    sed -n 's/^[[:space:]]*INSTALL_TYPE[[:space:]]*=[[:space:]]*//p' "$1" \
-    | head -n 1 \
-    | tr -d '[:space:]'
-  )"
-  if [ -n "${t:-}" ]; then
-    printf "%s" "$t"
-  else
-    printf "%s" "$DEFAULT_TYPE"
-  fi
-}
 
 ###############################################################################
 # SPINNER
@@ -152,20 +101,308 @@ spinner_stop() {
 }
 
 ###############################################################################
-# RUNNER
+# TIER ORDER
 ###############################################################################
-run_script() {
-  f=$1
-  name="$(basename "$f")"
-  t="$(get_type "$f")"
+TIERS=(
+  "base:${PKG_DIR}/base.packages"
+  "helpers:${PKG_DIR}/helpers.packages"
+  "core:${PKG_DIR}/core.packages"
+  "services:${PKG_DIR}/services.packages"
+  "apps:${PKG_DIR}/apps.packages"
+  "cosmetic:${PKG_DIR}/cosmetic.packages"
+)
+
+###############################################################################
+# PACKAGE FILE PARSING
+###############################################################################
+# - strips blank lines
+# - strips full-line comments
+# - strips inline comments (# ...)
+# - trims whitespace
+read_packages_file() {
+  local file="$1"
+  mapfile -t packages < <(
+    sed 's/#.*//' "$file" \
+      | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+      | awk 'NF'
+  )
+  printf '%s\0' "${packages[@]}"
+}
+
+# Build a set from EXCLUDE_PACKAGES lines
+declare -A EXCL=()
+while IFS= read -r line; do
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  [ -z "$line" ] && continue
+  EXCL["$line"]=1
+done <<< "$EXCLUDE_PACKAGES"
+
+filter_excluded() {
+  local -a in=("$@")
+  local -a out=()
+  local p
+  for p in "${in[@]}"; do
+    if [[ -n "${EXCL[$p]+x}" ]]; then
+      continue
+    fi
+    out+=("$p")
+  done
+  printf '%s\0' "${out[@]}"
+}
+
+###############################################################################
+# INTERACTIVE EXCLUSION UI
+###############################################################################
+# Numeric selection:
+#   1 2 5
+#   1-4
+# Empty input => no exclusions
+interactive_exclude() {
+  local tier="$1"; shift
+  local -a pkgs=("$@")
+
+  if [ "${#pkgs[@]}" -eq 0 ]; then
+    echo
+    printf "%s [%s] No packages found.\n" "$SKIP" "$tier"
+    printf '%s\0' "${pkgs[@]}"
+    return 0
+  fi
+
+  echo
+  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET"
+  local i=1
+  for p in "${pkgs[@]}"; do
+    printf "  %2d) %s\n" "$i" "$p"
+    i=$((i+1))
+  done
+
+  if [ "$INTERACTIVE" -ne 1 ]; then
+    printf "\nPress Enter to continue (%d packages)..." "${#pkgs[@]}"
+    read -r _ || true
+    printf '%s\0' "${pkgs[@]}"
+    return 0
+  fi
+
+  printf "\nSelect packages to EXCLUDE (e.g. '1 3 7-9'), or press Enter to install all: "
+  read -r sel || true
+  sel="${sel:-}"
+
+  if [ -z "$sel" ]; then
+    printf '%s\0' "${pkgs[@]}"
+    return 0
+  fi
+
+  declare -A drop_idx=()
+  local tok
+  for tok in $sel; do
+    if [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      local a="${BASH_REMATCH[1]}"
+      local b="${BASH_REMATCH[2]}"
+      if (( a > b )); then
+        local tmp="$a"; a="$b"; b="$tmp"
+      fi
+      for ((j=a; j<=b; j++)); do drop_idx["$j"]=1; done
+    elif [[ "$tok" =~ ^[0-9]+$ ]]; then
+      drop_idx["$tok"]=1
+    fi
+  done
+
+  local -a out=()
+  for ((j=1; j<=${#pkgs[@]}; j++)); do
+    if [[ -n "${drop_idx[$j]+x}" ]]; then
+      continue
+    fi
+    out+=("${pkgs[$((j-1))]}")
+  done
+
+  echo
+  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}"
+  if [ "${#out[@]}" -eq 0 ]; then
+    printf "%s [%s] Nothing selected to install.\n" "$SKIP" "$tier"
+  fi
+
+  printf '%s\0' "${out[@]}"
+}
+
+###############################################################################
+# PACMAN vs AUR (yay) INSTALL HELPERS
+###############################################################################
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+yay_user() {
+  if [ -n "${SUDO_USER:-}" ]; then
+    printf "%s" "$SUDO_USER"
+  else
+    printf "%s" "$(id -un)"
+  fi
+}
+
+# Pre-classify packages into official repo vs AUR
+# Uses pacman -Si which returns 0 if package exists in sync DB.
+classify_packages() {
+  local -a in=("$@")
+  local -a repo=()
+  local -a aur=()
+  local p
+
+  for p in "${in[@]}"; do
+    if pacman -Si "$p" >/dev/null 2>&1; then
+      repo+=("$p")
+    else
+      aur+=("$p")
+    fi
+  done
+
+  printf '%s\0' "${repo[@]}"
+  printf '\n'
+  printf '%s\0' "${aur[@]}"
+}
+
+install_repo_pkgs() {
+  local -a pkgs=("$@")
+  [ "${#pkgs[@]}" -eq 0 ] && return 0
+  sudo pacman -S --noconfirm --needed "${pkgs[@]}"
+}
+
+# Bootstrap yay from AUR (only when needed and enabled)
+ensure_yay() {
+  [ "$BOOTSTRAP_YAY" -eq 1 ] || return 1
+  have_cmd yay && return 0
+
+  # Need tools to build
+  sudo pacman -S --noconfirm --needed git base-devel >/dev/null 2>&1 || true
+
+  local u
+  u="$(yay_user)"
+
+  # Build yay in a temp dir as normal user
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir" 2>/dev/null || true' RETURN
+
+  # Use su to ensure it's not built as root
+  su - "$u" -c "
+    set -e
+    cd '$tmpdir'
+    git clone https://aur.archlinux.org/yay.git
+    cd yay
+    makepkg -si --noconfirm
+  "
+}
+
+install_aur_pkgs() {
+  local -a pkgs=("$@")
+  [ "${#pkgs[@]}" -eq 0 ] && return 0
+
+  # If yay isn't installed yet but AUR pkgs are requested,
+  # try to bootstrap yay (especially if yay itself is in the list).
+  if ! have_cmd yay; then
+    local needs_yay=0
+    local p
+    for p in "${pkgs[@]}"; do
+      if [ "$p" = "yay" ]; then
+        needs_yay=1
+        break
+      fi
+    done
+
+    if [ "$needs_yay" -eq 1 ]; then
+      ensure_yay || {
+        echo "ERROR: Could not bootstrap yay."
+        return 1
+      }
+      # Remove 'yay' from pkgs list now that it's installed
+      local -a rest=()
+      for p in "${pkgs[@]}"; do
+        [ "$p" = "yay" ] && continue
+        rest+=("$p")
+      done
+      pkgs=("${rest[@]}")
+      [ "${#pkgs[@]}" -eq 0 ] && return 0
+    else
+      echo "ERROR: AUR packages requested but 'yay' is not installed yet."
+      echo "Put 'yay' in an early tier (helpers) or enable BOOTSTRAP_YAY=1."
+      return 1
+    fi
+  fi
+
+  local u
+  u="$(yay_user)"
+
+  # Run yay as normal user
+  if [ "$(id -u)" -eq 0 ]; then
+    su - "$u" -c "yay -S --noconfirm --needed ${pkgs[*]}"
+  else
+    yay -S --noconfirm --needed "${pkgs[@]}"
+  fi
+}
+
+###############################################################################
+# INSTALLER (per-tier)
+###############################################################################
+install_tier() {
+  local tier="$1"
+  local file="$2"
+
+  if [ ! -f "$file" ]; then
+    printf "%s [%s] Missing file: %s\n" "$SKIP" "$tier" "$file"
+    return 0
+  fi
+
+  local -a pkgs=()
+  while IFS= read -r -d '' p; do pkgs+=("$p"); done < <(read_packages_file "$file")
+
+  local -a pkgs2=()
+  while IFS= read -r -d '' p; do pkgs2+=("$p"); done < <(filter_excluded "${pkgs[@]}")
+
+  local -a final=()
+  while IFS= read -r -d '' p; do final+=("$p"); done < <(interactive_exclude "$tier" "${pkgs2[@]}")
+
+  if [ "${#final[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  echo
+  printf "%s Install [%s] now? [Y/n] " "$BOLD" "$tier"
+  read -r ans || true
+  ans="${ans:-Y}"
+  case "$ans" in
+    Y|y|yes|YES) ;;
+    *) printf "%s [%s] Skipped by user.\n" "$SKIP" "$tier"; return 0 ;;
+  esac
+
+  # Split into repo vs AUR before installing
+  local -a repo_pkgs=()
+  local -a aur_pkgs=()
+
+  local tmp_class
+  tmp_class="$(mktemp)"
+  classify_packages "${final[@]}" >"$tmp_class"
+
+  # Read first line (repo) NUL-delimited
+  while IFS= read -r -d '' p; do repo_pkgs+=("$p"); done < <(awk 'BEGIN{RS="\n"; ORS=""} NR==1{print}' "$tmp_class")
+  # Read second line (aur) NUL-delimited
+  while IFS= read -r -d '' p; do aur_pkgs+=("$p"); done < <(awk 'BEGIN{RS="\n"; ORS=""} NR==2{print}' "$tmp_class")
+  rm -f "$tmp_class"
+
+  echo
+  printf "%s [%s] Repo: %d | AUR: %d\n" "$OK" "$tier" "${#repo_pkgs[@]}" "${#aur_pkgs[@]}"
+
+  local out
   out="$(mktemp)"
+  spinner_start "Installing [$tier]"
 
-  spinner_start "[$t] $name"
-  sh "$f" >"$out" 2>&1
-  code=$?
-  spinner_stop "$code" "[$t] $name"
+  set +e
+  {
+    install_repo_pkgs "${repo_pkgs[@]}"
+    install_aur_pkgs  "${aur_pkgs[@]}"
+  } >"$out" 2>&1
+  local code=$?
+  set -e
 
-  # Print installer output as an indented block
+  spinner_stop "$code" "Installed [$tier]"
+
   if [ "$VERBOSE" -eq 1 ] || [ "$code" -ne 0 ]; then
     if [ -s "$out" ]; then
       indent <"$out"
@@ -180,62 +417,24 @@ run_script() {
 ###############################################################################
 # MAIN
 ###############################################################################
-if ! ls "$INSTALL_DIR"/*.sh >/dev/null 2>&1; then
-  echo "No install scripts found in: $INSTALL_DIR/*.sh"
-  exit 0
-fi
-
-tmp="$(mktemp)"
-tmp_skip="$(mktemp)"
-sorted="$(mktemp)"
-
-for f in "$INSTALL_DIR"/*.sh; do
-  if is_template "$f"; then
-    printf "%s\n" "$(basename "$f")" >> "$tmp_skip"
-    continue
-  fi
-  if should_exclude "$f"; then
-    printf "%s\n" "$(basename "$f")" >> "$tmp_skip"
-    continue
-  fi
-
-  t="$(get_type "$f")"
-  w="$(type_weight "$t")"
-  printf "%03d %s %s\n" "$w" "$t" "$f" >> "$tmp"
-done
-
-TOTAL_ALL="$(ls "$INSTALL_DIR"/*.sh 2>/dev/null | wc -l | tr -d ' ')"
-TOTAL_RUN="$(wc -l < "$tmp" | tr -d ' ')"
-TOTAL_SKIP="$(wc -l < "$tmp_skip" | tr -d ' ')"
-
-printf "%s%sMaster install%s (total: %s, run: %s, excluded: %s)\n" \
-  "$BOLD" "$CYAN" "$RESET" "$TOTAL_ALL" "$TOTAL_RUN" "$TOTAL_SKIP"
+printf "%s%sMaster package install%s (%s)\n" "$BOLD" "$CYAN" "$RESET" "$PKG_DIR"
 
 RAN=0
 FAILED=0
 
-# IMPORTANT: avoid a pipeline here (would run loop in a subshell in /bin/sh)
-sort -k1,1n -k2,2 -k3,3 "$tmp" > "$sorted"
+for entry in "${TIERS[@]}"; do
+  tier="${entry%%:*}"
+  file="${entry#*:}"
 
-while IFS= read -r line; do
-  f="$(printf "%s" "$line" | cut -d' ' -f3-)"
-  if run_script "$f"; then
+  if install_tier "$tier" "$file"; then
     RAN=$((RAN + 1))
   else
     FAILED=$((FAILED + 1))
   fi
-done < "$sorted"
-
-if [ "$TOTAL_SKIP" -gt 0 ]; then
-  printf "\n%sExcluded scripts:%s\n" "$BOLD" "$RESET"
-  sort "$tmp_skip" | sed "s/^/  $SKIP /"
-fi
-
-rm -f "$tmp" "$tmp_skip" "$sorted"
+done
 
 printf "\n%sSUMMARY%s\n" "$BOLD" "$RESET"
-printf "  %s ran:     %s\n" "$OK" "$RAN"
-printf "  %s failed:  %s\n" "$ERR" "$FAILED"
-printf "  %s excluded:%s\n" "$SKIP" "$TOTAL_SKIP"
+printf "  %s tiers completed: %s\n" "$OK" "$RAN"
+printf "  %s tiers failed:    %s\n" "$ERR" "$FAILED"
 
 [ "$FAILED" -eq 0 ]
