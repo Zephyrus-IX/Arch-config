@@ -1,0 +1,13 @@
+# Arch-config base package list installed via install/packaging/base.sh
+
+# System core
+base
+linux
+linux-firmware
+sudo
+networkmanager
+git
+neovim
+curl
+wget
+openssh
