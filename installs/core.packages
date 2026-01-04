@@ -1,0 +1,44 @@
+# Arch-config core package list installed via install/packaging/base.sh
+
+# Hyprland + wayland packages
+hyprland
+wayland
+wayland-protocols
+xorg-xwayland
+
+# Graphics / Rendering
+mesa
+
+# Portals
+xdg-desktop-portal
+xdg-desktop-portal-hyprland
+
+# Session / login
+sddm
+uwsm # universal wayland session manager (are these comments gonna get caputured as a package argument?)
+
+# Menu Bar / App Launcher / Notification Manager
+waybar
+rofi-wayland
+swaync
+
+# Wallpaper & Theme manager / Lock Screen / idle daemon / logout menu
+swww
+hyprlock
+hypridle
+wlogout
+
+# Clipboard + screenshots
+wl-clipboard
+wl-clip-persist
+clipman
+grim
+slurp
+
+# Privilege Prompts
+polkit-gnome
+
+# Basic fonts
+noto-fonts
+noto-fonts-emoji
+ttf-font-awesome
