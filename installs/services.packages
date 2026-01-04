@@ -1,0 +1,20 @@
+# Arch-config services package list installed via install/packaging/base.sh
+
+# Audio Stack
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+
+# Networking / Discovery
+nss-mdns
+
+# Power / Time
+power-profiles-daemon
+
+# Printing / FirewaLL
+cups
+cups-filters
+cups-browsed
+cups-pdf
+ufw
