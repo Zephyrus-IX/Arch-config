@@ -19,8 +19,9 @@ uwsm
 
 # Menu Bar / App Launcher / Notification Manager
 waybar
-rofi-wayland
+rofi
 swaync
+libnotify
 
 # Wallpaper & Theme manager / Lock Screen / idle daemon / logout menu
 swww
