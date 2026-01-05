@@ -5,27 +5,13 @@ set -euo pipefail
 # 00-install-packages.sh
 ###############################################################################
 
-# Show installer output:
-# 1 = show pacman/yay output live (recommended)
-# 0 = quiet mode (minimal output)
 VERBOSE="${VERBOSE:-1}"
-
-# Exclude list by package name (one per line). Applies to all tiers.
 EXCLUDE_PACKAGES="${EXCLUDE_PACKAGES:-$'\n'}"
-
-# Keep sudo alive during run (prevents timeout mid-install)
-# 1 = yes, 0 = no
 SUDO_KEEPALIVE="${SUDO_KEEPALIVE:-1}"
-
-# Prompt per tier to exclude packages interactively.
-# 1 = yes, 0 = no prompts
 INTERACTIVE="${INTERACTIVE:-1}"
 
-# Where your tiered package files live (relative to repo root)
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG_DIR="${PKG_DIR:-$ROOT_DIR/installs}"
-
-# If yay is needed and not installed, auto-bootstrap it from AUR.
 BOOTSTRAP_YAY="${BOOTSTRAP_YAY:-1}"
 
 ###############################################################################
@@ -52,9 +38,25 @@ RUN="${CYAN}▶${RESET}"
 indent() { sed "s/^/${DIM}${BLUE}│${RESET}${DIM}    /"; }
 
 ###############################################################################
+# SAFE READ (fixes exclusion prompt reliability)
+###############################################################################
+read_line() {
+  # Reads one line into variable name passed as $1.
+  # Prefers STDIN if it's a tty, otherwise falls back to /dev/tty.
+  local __var="$1"
+  local __line=""
+  if [ -t 0 ]; then
+    IFS= read -r __line || true
+  else
+    IFS= read -r __line </dev/tty || true
+  fi
+  printf -v "$__var" '%s' "$__line"
+}
+
+###############################################################################
 # SUDO WARM-UP
 ###############################################################################
-echo "${DIM}Authenticating sudo once (so prompts don't look like a hang)...${RESET}"
+echo "${DIM}Authenticating sudo once...${RESET}"
 sudo -v </dev/tty
 
 if [ "$SUDO_KEEPALIVE" -eq 1 ]; then
@@ -147,30 +149,24 @@ wait_pacman_lock() {
 }
 
 ###############################################################################
-# PTY runner for pacman/yay (THIS IS THE IMPORTANT CHANGE)
+# PTY runner for pacman/yay (keeps live, correct output)
 ###############################################################################
-# Why: pacman/yay output (progress bars) often requires a TTY and breaks when piped.
-# We run inside a pseudo-tty using `script` so output is live and correct.
 run_pkg_cmd_live() {
   local logfile="$1"; shift
   local cmd_str="$*"
 
-  # Ensure prompts read from the terminal
-  # NOTE: We deliberately DO NOT pipe through indent() to avoid breaking progress bars.
   if command -v script >/dev/null 2>&1; then
-    # -q quiet, -e return exit code of command, -f flush, -c command
-    # We tee to logfile so you still have logs.
+    # run inside PTY; stream output live and also save to logfile
     script -qefc "$cmd_str" /dev/null </dev/tty 2>&1 | tee -a "$logfile"
     return "${PIPESTATUS[0]}"
   else
-    # Fallback (may lose progress formatting)
     bash -lc "$cmd_str" </dev/tty 2>&1 | tee -a "$logfile"
     return "${PIPESTATUS[0]}"
   fi
 }
 
 ###############################################################################
-# INTERACTIVE EXCLUSION UI (per-tier)
+# INTERACTIVE EXCLUSION UI (per-tier)  ✅ FIXED
 ###############################################################################
 interactive_exclude_tier() {
   local tier="$1"; shift
@@ -198,7 +194,9 @@ interactive_exclude_tier() {
 
   echo
   printf "Select packages to EXCLUDE for [%s] (e.g. '1 3 7-9'), or press Enter to install all: " "$tier"
-  read -r sel </dev/tty || true
+
+  local sel=""
+  read_line sel
   sel="${sel:-}"
 
   if [ -z "$sel" ]; then
@@ -267,7 +265,7 @@ ensure_yay() {
 }
 
 ###############################################################################
-# Install functions (NOW ACTUALLY LIVE)
+# Install functions
 ###############################################################################
 install_repo_pkgs_live() {
   local logfile="$1"; shift
@@ -343,9 +341,7 @@ install_tier() {
   done < <(interactive_exclude_tier "$tier" "${filtered[@]}")
 
   declare -A keep=()
-  for p in "${chosen[@]}"; do
-    keep["$p"]=1
-  done
+  for p in "${chosen[@]}"; do keep["$p"]=1; done
   for p in "${filtered[@]}"; do
     if [[ -z "${keep[$p]+x}" ]]; then
       EXCL["$p"]=1
@@ -359,7 +355,8 @@ install_tier() {
 
   echo
   printf "%s Install [%s] now? [Y/n] " "$BOLD" "$tier"
-  read -r ans </dev/tty || true
+  local ans=""
+  read_line ans
   ans="${ans:-Y}"
   case "$ans" in
     Y|y|yes|YES) ;;
@@ -369,11 +366,7 @@ install_tier() {
   local -a repo_pkgs=()
   local -a aur_pkgs=()
   for p in "${chosen[@]}"; do
-    if is_repo_pkg "$p"; then
-      repo_pkgs+=("$p")
-    else
-      aur_pkgs+=("$p")
-    fi
+    if is_repo_pkg "$p"; then repo_pkgs+=("$p"); else aur_pkgs+=("$p"); fi
   done
 
   echo
@@ -383,21 +376,11 @@ install_tier() {
   log="$(mktemp)"
 
   set +e
-  if [ "$VERBOSE" -eq 1 ]; then
-    install_repo_pkgs_live "$log" "${repo_pkgs[@]}"
+  install_repo_pkgs_live "$log" "${repo_pkgs[@]}"
+  code=$?
+  if [ "$code" -eq 0 ]; then
+    install_aur_pkgs_live "$log" "${aur_pkgs[@]}"
     code=$?
-    if [ "$code" -eq 0 ]; then
-      install_aur_pkgs_live "$log" "${aur_pkgs[@]}"
-      code=$?
-    fi
-  else
-    # Quiet mode: keep logging, but don't spam output
-    install_repo_pkgs_live "$log" "${repo_pkgs[@]}" >/dev/null 2>&1
-    code=$?
-    if [ "$code" -eq 0 ]; then
-      install_aur_pkgs_live "$log" "${aur_pkgs[@]}" >/dev/null 2>&1
-      code=$?
-    fi
   fi
   set -e
 
@@ -405,7 +388,7 @@ install_tier() {
     printf "%s Installed [%s]\n" "$OK" "$tier"
   else
     printf "%s Installed [%s]\n" "$ERR" "$tier"
-    echo "${DIM}Last output (log):${RESET}"
+    echo "${DIM}Last output:${RESET}"
     tail -n 40 "$log" | indent
   fi
 
