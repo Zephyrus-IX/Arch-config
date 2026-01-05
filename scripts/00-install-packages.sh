@@ -189,22 +189,32 @@ ensure_yay() {
   [ "$BOOTSTRAP_YAY" -eq 1 ] || return 1
   have_cmd yay && return 0
 
-  uiln "${RUN} Bootstrapping yay (needs git + base-devel)"
-  sudo pacman -S --noconfirm --needed git base-devel
+  # Preinstall everything yay build needs so makepkg never tries sudo for deps
+  sudo pacman -S --noconfirm --needed git base-devel go >/dev/null 2>&1 || true
 
   local u tmpdir
   u="$(yay_user)"
+  tmpdir=""
   tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir" 2>/dev/null || true' RETURN
 
+  # Only clean up if tmpdir is set
+  trap '[ -n "${tmpdir:-}" ] && rm -rf "$tmpdir" 2>/dev/null || true' RETURN
+
+  # Build as normal user (no sudo needed now)
   su - "$u" -c "
     set -e
     cd '$tmpdir'
     git clone https://aur.archlinux.org/yay.git
     cd yay
-    makepkg -si --noconfirm
+    makepkg -s --noconfirm
   "
+
+  # Install the built package as root (no sudo prompts inside makepkg)
+  local pkg
+  pkg="$(ls -1 "$tmpdir"/yay/yay-*.pkg.tar.* | head -n 1)"
+  sudo pacman -U --noconfirm --needed "$pkg"
 }
+
 
 ###############################################################################
 # Install functions (prints normally)
