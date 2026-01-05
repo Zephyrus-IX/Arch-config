@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+echo "DEBUG: stdin is a tty? $(test -t 0 && echo YES || echo NO)" >&2
 
 ###############################################################################
 # USER CONFIG (edit these)
