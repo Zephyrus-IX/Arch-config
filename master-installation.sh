@@ -18,8 +18,8 @@ EXCLUDE_PACKAGES="
 # 1 = yes, 0 = no
 SUDO_KEEPALIVE=1
 
-# Prompt per tier to exclude packages interactively.
-# 1 = yes, 0 = no prompts (installs everything, minus EXCLUDE_PACKAGES)
+# Prompt ONCE at the start to exclude packages globally.
+# 1 = yes, 0 = no prompts
 INTERACTIVE=1
 
 # Where your tiered package files live
@@ -115,10 +115,6 @@ TIERS=(
 ###############################################################################
 # PACKAGE FILE PARSING
 ###############################################################################
-# - strips blank lines
-# - strips full-line comments
-# - strips inline comments (# ...)
-# - trims whitespace
 read_packages_file() {
   local file="$1"
   mapfile -t packages < <(
@@ -129,7 +125,9 @@ read_packages_file() {
   printf '%s\0' "${packages[@]}"
 }
 
-# Build a set from EXCLUDE_PACKAGES lines
+###############################################################################
+# EXCLUDE SET
+###############################################################################
 declare -A EXCL=()
 while IFS= read -r line; do
   line="${line#"${line%%[![:space:]]*}"}"
@@ -138,95 +136,39 @@ while IFS= read -r line; do
   EXCL["$line"]=1
 done <<< "$EXCLUDE_PACKAGES"
 
-filter_excluded() {
-  local -a in=("$@")
-  local -a out=()
-  local p
-  for p in "${in[@]}"; do
-    if [[ -n "${EXCL[$p]+x}" ]]; then
-      continue
-    fi
-    out+=("$p")
-  done
-  printf '%s\0' "${out[@]}"
+###############################################################################
+# FAST repo/AUR classification cache
+###############################################################################
+# Build a set of all repo packages ONCE (much faster than pacman -Si per pkg)
+declare -A REPOPKG=()
+build_repo_cache() {
+  spinner_start "Caching repo package list (pacman -Slq)"
+  local out
+  out="$(mktemp)"
+  set +e
+  pacman -Slq >"$out" 2>&1
+  local code=$?
+  set -e
+  spinner_stop "$code" "Repo package cache ready"
+  if [ "$code" -ne 0 ]; then
+    echo "Failed to build repo cache. Output:"
+    indent <"$out"
+    rm -f "$out"
+    return 1
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] && REPOPKG["$p"]=1
+  done <"$out"
+  rm -f "$out"
+}
+
+is_repo_pkg() {
+  local p="$1"
+  [[ -n "${REPOPKG[$p]+x}" ]]
 }
 
 ###############################################################################
-# INTERACTIVE EXCLUSION UI
-###############################################################################
-# Numeric selection:
-#   1 2 5
-#   1-4
-# Empty input => no exclusions
-interactive_exclude() {
-  local tier="$1"; shift
-  local -a pkgs=("$@")
-
-  if [ "${#pkgs[@]}" -eq 0 ]; then
-    echo
-    printf "%s [%s] No packages found.\n" "$SKIP" "$tier"
-    printf '%s\0' "${pkgs[@]}"
-    return 0
-  fi
-
-  echo
-  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET"
-  local i=1
-  for p in "${pkgs[@]}"; do
-    printf "  %2d) %s\n" "$i" "$p"
-    i=$((i+1))
-  done
-
-  if [ "$INTERACTIVE" -ne 1 ]; then
-    printf "\nPress Enter to continue (%d packages)..." "${#pkgs[@]}"
-    read -r _ || true
-    printf '%s\0' "${pkgs[@]}"
-    return 0
-  fi
-
-  printf "\nSelect packages to EXCLUDE (e.g. '1 3 7-9'), or press Enter to install all: "
-  read -r sel || true
-  sel="${sel:-}"
-
-  if [ -z "$sel" ]; then
-    printf '%s\0' "${pkgs[@]}"
-    return 0
-  fi
-
-  declare -A drop_idx=()
-  local tok
-  for tok in $sel; do
-    if [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-      local a="${BASH_REMATCH[1]}"
-      local b="${BASH_REMATCH[2]}"
-      if (( a > b )); then
-        local tmp="$a"; a="$b"; b="$tmp"
-      fi
-      for ((j=a; j<=b; j++)); do drop_idx["$j"]=1; done
-    elif [[ "$tok" =~ ^[0-9]+$ ]]; then
-      drop_idx["$tok"]=1
-    fi
-  done
-
-  local -a out=()
-  for ((j=1; j<=${#pkgs[@]}; j++)); do
-    if [[ -n "${drop_idx[$j]+x}" ]]; then
-      continue
-    fi
-    out+=("${pkgs[$((j-1))]}")
-  done
-
-  echo
-  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}"
-  if [ "${#out[@]}" -eq 0 ]; then
-    printf "%s [%s] Nothing selected to install.\n" "$SKIP" "$tier"
-  fi
-
-  printf '%s\0' "${out[@]}"
-}
-
-###############################################################################
-# PACMAN vs AUR (yay) INSTALL HELPERS
+# yay helpers
 ###############################################################################
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
@@ -238,50 +180,17 @@ yay_user() {
   fi
 }
 
-# Pre-classify packages into official repo vs AUR
-# Uses pacman -Si which returns 0 if package exists in sync DB.
-classify_packages() {
-  local -a in=("$@")
-  local -a repo=()
-  local -a aur=()
-  local p
-
-  for p in "${in[@]}"; do
-    if pacman -Si "$p" >/dev/null 2>&1; then
-      repo+=("$p")
-    else
-      aur+=("$p")
-    fi
-  done
-
-  printf '%s\0' "${repo[@]}"
-  printf '\n'
-  printf '%s\0' "${aur[@]}"
-}
-
-install_repo_pkgs() {
-  local -a pkgs=("$@")
-  [ "${#pkgs[@]}" -eq 0 ] && return 0
-  sudo pacman -S --noconfirm --needed "${pkgs[@]}"
-}
-
-# Bootstrap yay from AUR (only when needed and enabled)
 ensure_yay() {
   [ "$BOOTSTRAP_YAY" -eq 1 ] || return 1
   have_cmd yay && return 0
 
-  # Need tools to build
   sudo pacman -S --noconfirm --needed git base-devel >/dev/null 2>&1 || true
 
-  local u
+  local u tmpdir
   u="$(yay_user)"
-
-  # Build yay in a temp dir as normal user
-  local tmpdir
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir" 2>/dev/null || true' RETURN
 
-  # Use su to ensure it's not built as root
   su - "$u" -c "
     set -e
     cd '$tmpdir'
@@ -291,28 +200,106 @@ ensure_yay() {
   "
 }
 
+###############################################################################
+# GLOBAL OVERVIEW + EXCLUSION (one prompt total)
+###############################################################################
+# We number packages across all tiers, allow range selection to exclude.
+global_select_exclusions() {
+  local -a all_names=()
+  local -a all_tiers=()
+  local -a all_pkgs=()
+
+  # Build global list
+  for entry in "${TIERS[@]}"; do
+    local tier="${entry%%:*}"
+    local file="${entry#*:}"
+    [ -f "$file" ] || continue
+
+    local -a pkgs=()
+    while IFS= read -r -d '' p; do pkgs+=("$p"); done < <(read_packages_file "$file")
+
+    for p in "${pkgs[@]}"; do
+      # skip explicit excludes
+      if [[ -n "${EXCL[$p]+x}" ]]; then
+        continue
+      fi
+      all_names+=("$tier::$p")
+      all_tiers+=("$tier")
+      all_pkgs+=("$p")
+    done
+  done
+
+  echo
+  printf "%s%sPACKAGE OVERVIEW%s\n" "$BOLD" "$CYAN" "$RESET"
+  printf "%sSelect packages to EXCLUDE globally (e.g. '1 3 7-9'), or press Enter to install all.%s\n" "$DIM" "$RESET"
+  echo
+
+  local i=1
+  for idx in "${!all_names[@]}"; do
+    printf "  %3d) %-10s %s\n" "$i" "${all_tiers[$idx]}" "${all_pkgs[$idx]}"
+    i=$((i+1))
+  done
+
+  if [ "${#all_pkgs[@]}" -eq 0 ]; then
+    echo
+    printf "%s No packages found across tiers (or all excluded).\n" "$SKIP"
+    return 0
+  fi
+
+  if [ "$INTERACTIVE" -ne 1 ]; then
+    return 0
+  fi
+
+  echo
+  printf "Exclude selection: "
+  read -r sel || true
+  sel="${sel:-}"
+  [ -z "$sel" ] && return 0
+
+  declare -A drop_idx=()
+  local tok
+  for tok in $sel; do
+    if [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      local a="${BASH_REMATCH[1]}"
+      local b="${BASH_REMATCH[2]}"
+      if (( a > b )); then local tmp="$a"; a="$b"; b="$tmp"; fi
+      for ((j=a; j<=b; j++)); do drop_idx["$j"]=1; done
+    elif [[ "$tok" =~ ^[0-9]+$ ]]; then
+      drop_idx["$tok"]=1
+    fi
+  done
+
+  # add excluded packages to EXCL set
+  local total="${#all_pkgs[@]}"
+  for ((j=1; j<=total; j++)); do
+    if [[ -n "${drop_idx[$j]+x}" ]]; then
+      EXCL["${all_pkgs[$((j-1))]}"]=1
+    fi
+  done
+}
+
+###############################################################################
+# INSTALL functions
+###############################################################################
+install_repo_pkgs() {
+  local -a pkgs=("$@")
+  [ "${#pkgs[@]}" -eq 0 ] && return 0
+  sudo pacman -S --noconfirm --needed "${pkgs[@]}"
+}
+
 install_aur_pkgs() {
   local -a pkgs=("$@")
   [ "${#pkgs[@]}" -eq 0 ] && return 0
 
-  # If yay isn't installed yet but AUR pkgs are requested,
-  # try to bootstrap yay (especially if yay itself is in the list).
   if ! have_cmd yay; then
-    local needs_yay=0
-    local p
+    # If yay itself is requested, bootstrap it.
+    local needs_yay=0 p
     for p in "${pkgs[@]}"; do
-      if [ "$p" = "yay" ]; then
-        needs_yay=1
-        break
-      fi
+      [ "$p" = "yay" ] && needs_yay=1 && break
     done
-
     if [ "$needs_yay" -eq 1 ]; then
-      ensure_yay || {
-        echo "ERROR: Could not bootstrap yay."
-        return 1
-      }
-      # Remove 'yay' from pkgs list now that it's installed
+      ensure_yay
+      # remove yay from list
       local -a rest=()
       for p in "${pkgs[@]}"; do
         [ "$p" = "yay" ] && continue
@@ -321,8 +308,7 @@ install_aur_pkgs() {
       pkgs=("${rest[@]}")
       [ "${#pkgs[@]}" -eq 0 ] && return 0
     else
-      echo "ERROR: AUR packages requested but 'yay' is not installed yet."
-      echo "Put 'yay' in an early tier (helpers) or enable BOOTSTRAP_YAY=1."
+      echo "ERROR: AUR packages requested but 'yay' is not installed."
       return 1
     fi
   fi
@@ -330,16 +316,18 @@ install_aur_pkgs() {
   local u
   u="$(yay_user)"
 
-  # Run yay as normal user
+  # Prevent yay prompting (cleanBuild/diffs)
+  local yay_flags=(--noconfirm --needed --answerclean None --answerdiff None)
+
   if [ "$(id -u)" -eq 0 ]; then
-    su - "$u" -c "yay -S --noconfirm --needed ${pkgs[*]}"
+    su - "$u" -c "yay ${yay_flags[*]} -S ${pkgs[*]}"
   else
-    yay -S --noconfirm --needed "${pkgs[@]}"
+    yay "${yay_flags[@]}" -S "${pkgs[@]}"
   fi
 }
 
 ###############################################################################
-# INSTALLER (per-tier)
+# INSTALLER (per-tier, but NO per-tier prompts anymore)
 ###############################################################################
 install_tier() {
   local tier="$1"
@@ -353,38 +341,29 @@ install_tier() {
   local -a pkgs=()
   while IFS= read -r -d '' p; do pkgs+=("$p"); done < <(read_packages_file "$file")
 
-  local -a pkgs2=()
-  while IFS= read -r -d '' p; do pkgs2+=("$p"); done < <(filter_excluded "${pkgs[@]}")
-
+  # apply global excludes
   local -a final=()
-  while IFS= read -r -d '' p; do final+=("$p"); done < <(interactive_exclude "$tier" "${pkgs2[@]}")
+  local p
+  for p in "${pkgs[@]}"; do
+    [[ -n "${EXCL[$p]+x}" ]] && continue
+    final+=("$p")
+  done
 
   if [ "${#final[@]}" -eq 0 ]; then
+    printf "%s [%s] Nothing to install (all excluded).\n" "$SKIP" "$tier"
     return 0
   fi
 
-  echo
-  printf "%s Install [%s] now? [Y/n] " "$BOLD" "$tier"
-  read -r ans || true
-  ans="${ans:-Y}"
-  case "$ans" in
-    Y|y|yes|YES) ;;
-    *) printf "%s [%s] Skipped by user.\n" "$SKIP" "$tier"; return 0 ;;
-  esac
-
-  # Split into repo vs AUR before installing
+  # split fast via cache
   local -a repo_pkgs=()
   local -a aur_pkgs=()
-
-  local tmp_class
-  tmp_class="$(mktemp)"
-  classify_packages "${final[@]}" >"$tmp_class"
-
-  # Read first line (repo) NUL-delimited
-  while IFS= read -r -d '' p; do repo_pkgs+=("$p"); done < <(awk 'BEGIN{RS="\n"; ORS=""} NR==1{print}' "$tmp_class")
-  # Read second line (aur) NUL-delimited
-  while IFS= read -r -d '' p; do aur_pkgs+=("$p"); done < <(awk 'BEGIN{RS="\n"; ORS=""} NR==2{print}' "$tmp_class")
-  rm -f "$tmp_class"
+  for p in "${final[@]}"; do
+    if is_repo_pkg "$p"; then
+      repo_pkgs+=("$p")
+    else
+      aur_pkgs+=("$p")
+    fi
+  done
 
   echo
   printf "%s [%s] Repo: %d | AUR: %d\n" "$OK" "$tier" "${#repo_pkgs[@]}" "${#aur_pkgs[@]}"
@@ -418,6 +397,20 @@ install_tier() {
 # MAIN
 ###############################################################################
 printf "%s%sMaster package install%s (%s)\n" "$BOLD" "$CYAN" "$RESET" "$PKG_DIR"
+
+build_repo_cache
+
+# One overview prompt at the start (optional)
+global_select_exclusions
+
+echo
+printf "%s Proceed with installation? [Y/n] " "$BOLD"
+read -r ans || true
+ans="${ans:-Y}"
+case "$ans" in
+  Y|y|yes|YES) ;;
+  *) printf "%s Aborted.\n" "$SKIP"; exit 0 ;;
+esac
 
 RAN=0
 FAILED=0
