@@ -170,34 +170,36 @@ is_repo_pkg() {
 ###############################################################################
 # INTERACTIVE EXCLUSION UI (per-tier)
 ###############################################################################
+# NOTE: This function prints UI/prompts to STDERR so the caller can capture
+# stdout safely as a NUL-delimited package list.
 interactive_exclude_tier() {
   local tier="$1"; shift
   local -a pkgs=("$@")
 
   if [ "${#pkgs[@]}" -eq 0 ]; then
-    echo
-    printf "%s [%s] No packages found.\n" "$SKIP" "$tier"
+    echo >&2
+    printf "%s [%s] No packages found.\n" "$SKIP" "$tier" >&2
     printf '%s\0' "${pkgs[@]}"
     return 0
   fi
 
-  echo
-  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET"
+  echo >&2
+  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET" >&2
   local i=1
   for p in "${pkgs[@]}"; do
-    printf "  %2d) %s\n" "$i" "$p"
+    printf "  %2d) %s\n" "$i" "$p" >&2
     i=$((i+1))
   done
 
   if [ "$INTERACTIVE" -ne 1 ]; then
-    printf "\nPress Enter to continue (%d packages)..." "${#pkgs[@]}"
+    printf "\nPress Enter to continue (%d packages)..." "${#pkgs[@]}" >&2
     read -r _ || true
     printf '%s\0' "${pkgs[@]}"
     return 0
   fi
 
-  echo
-  printf "Select packages to EXCLUDE for [%s] (e.g. '1 3 7-9'), or press Enter to install all: " "$tier"
+  echo >&2
+  printf "Select packages to EXCLUDE for [%s] (e.g. '1 3 7-9'), or press Enter to install all: " "$tier" >&2
   read -r sel || true
   sel="${sel:-}"
 
@@ -227,8 +229,10 @@ interactive_exclude_tier() {
     out+=("${pkgs[$((j-1))]}")
   done
 
-  echo
-  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}"
+  echo >&2
+  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}" >&2
+
+  # IMPORTANT: only the NUL-delimited list goes to stdout (captured by caller)
   printf '%s\0' "${out[@]}"
 }
 
