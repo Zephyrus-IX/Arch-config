@@ -18,7 +18,7 @@ EXCLUDE_PACKAGES="
 # 1 = yes, 0 = no
 SUDO_KEEPALIVE=1
 
-# Prompt ONCE at the start to exclude packages globally.
+# Prompt per tier to exclude packages interactively.
 # 1 = yes, 0 = no prompts
 INTERACTIVE=1
 
@@ -126,7 +126,7 @@ read_packages_file() {
 }
 
 ###############################################################################
-# EXCLUDE SET
+# EXCLUDE SET (global)
 ###############################################################################
 declare -A EXCL=()
 while IFS= read -r line; do
@@ -139,8 +139,8 @@ done <<< "$EXCLUDE_PACKAGES"
 ###############################################################################
 # FAST repo/AUR classification cache
 ###############################################################################
-# Build a set of all repo packages ONCE (much faster than pacman -Si per pkg)
 declare -A REPOPKG=()
+
 build_repo_cache() {
   spinner_start "Caching repo package list (pacman -Slq)"
   local out
@@ -165,6 +165,71 @@ build_repo_cache() {
 is_repo_pkg() {
   local p="$1"
   [[ -n "${REPOPKG[$p]+x}" ]]
+}
+
+###############################################################################
+# INTERACTIVE EXCLUSION UI (per-tier)
+###############################################################################
+interactive_exclude_tier() {
+  local tier="$1"; shift
+  local -a pkgs=("$@")
+
+  if [ "${#pkgs[@]}" -eq 0 ]; then
+    echo
+    printf "%s [%s] No packages found.\n" "$SKIP" "$tier"
+    printf '%s\0' "${pkgs[@]}"
+    return 0
+  fi
+
+  echo
+  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET"
+  local i=1
+  for p in "${pkgs[@]}"; do
+    printf "  %2d) %s\n" "$i" "$p"
+    i=$((i+1))
+  done
+
+  if [ "$INTERACTIVE" -ne 1 ]; then
+    printf "\nPress Enter to continue (%d packages)..." "${#pkgs[@]}"
+    read -r _ || true
+    printf '%s\0' "${pkgs[@]}"
+    return 0
+  fi
+
+  echo
+  printf "Select packages to EXCLUDE for [%s] (e.g. '1 3 7-9'), or press Enter to install all: " "$tier"
+  read -r sel || true
+  sel="${sel:-}"
+
+  if [ -z "$sel" ]; then
+    printf '%s\0' "${pkgs[@]}"
+    return 0
+  fi
+
+  declare -A drop_idx=()
+  local tok
+  for tok in $sel; do
+    if [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      local a="${BASH_REMATCH[1]}"
+      local b="${BASH_REMATCH[2]}"
+      if (( a > b )); then local tmp="$a"; a="$b"; b="$tmp"; fi
+      for ((j=a; j<=b; j++)); do drop_idx["$j"]=1; done
+    elif [[ "$tok" =~ ^[0-9]+$ ]]; then
+      drop_idx["$tok"]=1
+    fi
+  done
+
+  local -a out=()
+  for ((j=1; j<=${#pkgs[@]}; j++)); do
+    if [[ -n "${drop_idx[$j]+x}" ]]; then
+      continue
+    fi
+    out+=("${pkgs[$((j-1))]}")
+  done
+
+  echo
+  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}"
+  printf '%s\0' "${out[@]}"
 }
 
 ###############################################################################
@@ -201,85 +266,7 @@ ensure_yay() {
 }
 
 ###############################################################################
-# GLOBAL OVERVIEW + EXCLUSION (one prompt total)
-###############################################################################
-# We number packages across all tiers, allow range selection to exclude.
-global_select_exclusions() {
-  local -a all_names=()
-  local -a all_tiers=()
-  local -a all_pkgs=()
-
-  # Build global list
-  for entry in "${TIERS[@]}"; do
-    local tier="${entry%%:*}"
-    local file="${entry#*:}"
-    [ -f "$file" ] || continue
-
-    local -a pkgs=()
-    while IFS= read -r -d '' p; do pkgs+=("$p"); done < <(read_packages_file "$file")
-
-    for p in "${pkgs[@]}"; do
-      # skip explicit excludes
-      if [[ -n "${EXCL[$p]+x}" ]]; then
-        continue
-      fi
-      all_names+=("$tier::$p")
-      all_tiers+=("$tier")
-      all_pkgs+=("$p")
-    done
-  done
-
-  echo
-  printf "%s%sPACKAGE OVERVIEW%s\n" "$BOLD" "$CYAN" "$RESET"
-  printf "%sSelect packages to EXCLUDE globally (e.g. '1 3 7-9'), or press Enter to install all.%s\n" "$DIM" "$RESET"
-  echo
-
-  local i=1
-  for idx in "${!all_names[@]}"; do
-    printf "  %3d) %-10s %s\n" "$i" "${all_tiers[$idx]}" "${all_pkgs[$idx]}"
-    i=$((i+1))
-  done
-
-  if [ "${#all_pkgs[@]}" -eq 0 ]; then
-    echo
-    printf "%s No packages found across tiers (or all excluded).\n" "$SKIP"
-    return 0
-  fi
-
-  if [ "$INTERACTIVE" -ne 1 ]; then
-    return 0
-  fi
-
-  echo
-  printf "Exclude selection: "
-  read -r sel || true
-  sel="${sel:-}"
-  [ -z "$sel" ] && return 0
-
-  declare -A drop_idx=()
-  local tok
-  for tok in $sel; do
-    if [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-      local a="${BASH_REMATCH[1]}"
-      local b="${BASH_REMATCH[2]}"
-      if (( a > b )); then local tmp="$a"; a="$b"; b="$tmp"; fi
-      for ((j=a; j<=b; j++)); do drop_idx["$j"]=1; done
-    elif [[ "$tok" =~ ^[0-9]+$ ]]; then
-      drop_idx["$tok"]=1
-    fi
-  done
-
-  # add excluded packages to EXCL set
-  local total="${#all_pkgs[@]}"
-  for ((j=1; j<=total; j++)); do
-    if [[ -n "${drop_idx[$j]+x}" ]]; then
-      EXCL["${all_pkgs[$((j-1))]}"]=1
-    fi
-  done
-}
-
-###############################################################################
-# INSTALL functions
+# Install functions
 ###############################################################################
 install_repo_pkgs() {
   local -a pkgs=("$@")
@@ -292,14 +279,13 @@ install_aur_pkgs() {
   [ "${#pkgs[@]}" -eq 0 ] && return 0
 
   if ! have_cmd yay; then
-    # If yay itself is requested, bootstrap it.
+    # If yay itself is requested, bootstrap it
     local needs_yay=0 p
     for p in "${pkgs[@]}"; do
       [ "$p" = "yay" ] && needs_yay=1 && break
     done
     if [ "$needs_yay" -eq 1 ]; then
       ensure_yay
-      # remove yay from list
       local -a rest=()
       for p in "${pkgs[@]}"; do
         [ "$p" = "yay" ] && continue
@@ -327,7 +313,7 @@ install_aur_pkgs() {
 }
 
 ###############################################################################
-# INSTALLER (per-tier, but NO per-tier prompts anymore)
+# INSTALLER (per-tier)
 ###############################################################################
 install_tier() {
   local tier="$1"
@@ -341,23 +327,45 @@ install_tier() {
   local -a pkgs=()
   while IFS= read -r -d '' p; do pkgs+=("$p"); done < <(read_packages_file "$file")
 
-  # apply global excludes
-  local -a final=()
+  # apply global excludes (from EXCLUDE_PACKAGES and prior tier choices)
+  local -a filtered=()
   local p
   for p in "${pkgs[@]}"; do
     [[ -n "${EXCL[$p]+x}" ]] && continue
-    final+=("$p")
+    filtered+=("$p")
   done
 
-  if [ "${#final[@]}" -eq 0 ]; then
-    printf "%s [%s] Nothing to install (all excluded).\n" "$SKIP" "$tier"
+  # ask exclusions for THIS tier and add them to global EXCL
+  local -a chosen=()
+  while IFS= read -r -d '' p; do chosen+=("$p"); done < <(interactive_exclude_tier "$tier" "${filtered[@]}")
+
+  # any package in filtered but not in chosen is excluded from now on
+  declare -A keep=()
+  for p in "${chosen[@]}"; do keep["$p"]=1; done
+  for p in "${filtered[@]}"; do
+    if [[ -z "${keep[$p]+x}" ]]; then
+      EXCL["$p"]=1
+    fi
+  done
+
+  if [ "${#chosen[@]}" -eq 0 ]; then
+    printf "%s [%s] Nothing selected to install.\n" "$SKIP" "$tier"
     return 0
   fi
 
-  # split fast via cache
+  echo
+  printf "%s Install [%s] now? [Y/n] " "$BOLD" "$tier"
+  read -r ans || true
+  ans="${ans:-Y}"
+  case "$ans" in
+    Y|y|yes|YES) ;;
+    *) printf "%s [%s] Skipped by user.\n" "$SKIP" "$tier"; return 0 ;;
+  esac
+
+  # split using cache
   local -a repo_pkgs=()
   local -a aur_pkgs=()
-  for p in "${final[@]}"; do
+  for p in "${chosen[@]}"; do
     if is_repo_pkg "$p"; then
       repo_pkgs+=("$p")
     else
@@ -399,18 +407,6 @@ install_tier() {
 printf "%s%sMaster package install%s (%s)\n" "$BOLD" "$CYAN" "$RESET" "$PKG_DIR"
 
 build_repo_cache
-
-# One overview prompt at the start (optional)
-global_select_exclusions
-
-echo
-printf "%s Proceed with installation? [Y/n] " "$BOLD"
-read -r ans || true
-ans="${ans:-Y}"
-case "$ans" in
-  Y|y|yes|YES) ;;
-  *) printf "%s Aborted.\n" "$SKIP"; exit 0 ;;
-esac
 
 RAN=0
 FAILED=0
