@@ -2,6 +2,7 @@
 
 # System core
 base
+base-devel
 linux
 linux-firmware
 sudo

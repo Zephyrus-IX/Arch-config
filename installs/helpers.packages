@@ -1,6 +1,5 @@
 # Arch-config helper package list installed via install/packaging/base.sh
 
-base-devel
 unzip
 stow
 yay
