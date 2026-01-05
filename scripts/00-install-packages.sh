@@ -1,45 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "DEBUG: stdin is a tty? $(test -t 0 && echo YES || echo NO)" >&2
 
 ###############################################################################
-# USER CONFIG (edit these)
+# 00-install-packages.sh
 ###############################################################################
 
 # Show installer output:
-# 1 = always show output (default)
-# 0 = only show output when a script fails
-VERBOSE=1
+# 1 = show pacman/yay output live (recommended)
+# 0 = quiet mode (minimal output)
+VERBOSE="${VERBOSE:-1}"
 
 # Exclude list by package name (one per line). Applies to all tiers.
-EXCLUDE_PACKAGES="
-"
+EXCLUDE_PACKAGES="${EXCLUDE_PACKAGES:-$'\n'}"
 
 # Keep sudo alive during run (prevents timeout mid-install)
 # 1 = yes, 0 = no
-SUDO_KEEPALIVE=1
+SUDO_KEEPALIVE="${SUDO_KEEPALIVE:-1}"
 
 # Prompt per tier to exclude packages interactively.
 # 1 = yes, 0 = no prompts
-INTERACTIVE=1
+INTERACTIVE="${INTERACTIVE:-1}"
 
-# Where your tiered package files live
+# Where your tiered package files live (relative to repo root)
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-PKG_DIR="$ROOT_DIR/installs"
+PKG_DIR="${PKG_DIR:-$ROOT_DIR/installs}"
 
 # If yay is needed and not installed, auto-bootstrap it from AUR.
-BOOTSTRAP_YAY=1
-
-###############################################################################
-# SUDO WARM-UP (run anywhere as any user, without becoming root)
-###############################################################################
-sudo -v
-
-if [ "$SUDO_KEEPALIVE" -eq 1 ]; then
-  ( while :; do sudo -n -v 2>/dev/null; sleep 60; done ) &
-  SUDO_KEEPALIVE_PID=$!
-  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT INT TERM
-fi
+BOOTSTRAP_YAY="${BOOTSTRAP_YAY:-1}"
 
 ###############################################################################
 # PRETTY OUTPUT (colors/icons)
@@ -62,45 +49,19 @@ ERR="${RED}✖${RESET}"
 SKIP="${YELLOW}↷${RESET}"
 RUN="${CYAN}▶${RESET}"
 
-# Indent installer output blocks (pipe in blue, text dimmed)
 indent() { sed "s/^/${DIM}${BLUE}│${RESET}${DIM}    /"; }
 
 ###############################################################################
-# SPINNER
+# SUDO WARM-UP
 ###############################################################################
-spinner_start() {
-  SPIN_MSG=$1
-  SPIN_CHARS='|/-\'
-  SPIN_i=0
-  printf '\033[?25l' 2>/dev/null || true
+echo "${DIM}Authenticating sudo once (so prompts don't look like a hang)...${RESET}"
+sudo -v </dev/tty
 
-  (
-    while :; do
-      c=$(printf "%s" "$SPIN_CHARS" | cut -c $(( (SPIN_i % 4) + 1 )))
-      SPIN_i=$((SPIN_i + 1))
-      printf "\r%s %s %s%s%s" "$RUN" "$c" "$BOLD" "$SPIN_MSG" "$RESET"
-      sleep 0.1
-    done
-  ) &
-  SPIN_PID=$!
-}
-
-spinner_stop() {
-  code=$1
-  msg=$2
-
-  kill "$SPIN_PID" 2>/dev/null || true
-  wait "$SPIN_PID" 2>/dev/null || true
-
-  printf "\r\033[K" 2>/dev/null || true
-  printf '\033[?25h' 2>/dev/null || true
-
-  if [ "$code" -eq 0 ]; then
-    printf "%s %s\n" "$OK" "$msg"
-  else
-    printf "%s %s\n" "$ERR" "$msg"
-  fi
-}
+if [ "$SUDO_KEEPALIVE" -eq 1 ]; then
+  ( while :; do sudo -n -v 2>/dev/null; sleep 60; done ) &
+  SUDO_KEEPALIVE_PID=$!
+  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT INT TERM
+fi
 
 ###############################################################################
 # TIER ORDER
@@ -144,24 +105,25 @@ done <<< "$EXCLUDE_PACKAGES"
 declare -A REPOPKG=()
 
 build_repo_cache() {
-  spinner_start "Caching repo package list (pacman -Slq)"
+  echo "${CYAN}${BOLD}Master package install${RESET} (${PKG_DIR})"
   local out
   out="$(mktemp)"
+  echo "${RUN} Caching repo package list (pacman -Slq)"
   set +e
   pacman -Slq >"$out" 2>&1
   local code=$?
   set -e
-  spinner_stop "$code" "Repo package cache ready"
   if [ "$code" -ne 0 ]; then
-    echo "Failed to build repo cache. Output:"
+    echo "${ERR} Failed to build repo cache. Output:"
     indent <"$out"
     rm -f "$out"
     return 1
   fi
   while IFS= read -r p; do
-    [ -n "$p" ] && REPOPKG["$p"]=1
+    [ -n "${p:-}" ] && REPOPKG["$p"]=1
   done <"$out"
   rm -f "$out"
+  echo "${OK} Repo package cache ready"
 }
 
 is_repo_pkg() {
@@ -170,39 +132,73 @@ is_repo_pkg() {
 }
 
 ###############################################################################
+# Pacman lock handling
+###############################################################################
+wait_pacman_lock() {
+  local lock="/var/lib/pacman/db.lck"
+  local i=0
+  while [ -e "$lock" ]; do
+    i=$((i+1))
+    if (( i % 20 == 0 )); then
+      echo "${YELLOW}↷ pacman lock present ($lock). Waiting...${RESET}"
+    fi
+    sleep 0.25
+  done
+}
+
+###############################################################################
+# PTY runner for pacman/yay (THIS IS THE IMPORTANT CHANGE)
+###############################################################################
+# Why: pacman/yay output (progress bars) often requires a TTY and breaks when piped.
+# We run inside a pseudo-tty using `script` so output is live and correct.
+run_pkg_cmd_live() {
+  local logfile="$1"; shift
+  local cmd_str="$*"
+
+  # Ensure prompts read from the terminal
+  # NOTE: We deliberately DO NOT pipe through indent() to avoid breaking progress bars.
+  if command -v script >/dev/null 2>&1; then
+    # -q quiet, -e return exit code of command, -f flush, -c command
+    # We tee to logfile so you still have logs.
+    script -qefc "$cmd_str" /dev/null </dev/tty 2>&1 | tee -a "$logfile"
+    return "${PIPESTATUS[0]}"
+  else
+    # Fallback (may lose progress formatting)
+    bash -lc "$cmd_str" </dev/tty 2>&1 | tee -a "$logfile"
+    return "${PIPESTATUS[0]}"
+  fi
+}
+
+###############################################################################
 # INTERACTIVE EXCLUSION UI (per-tier)
 ###############################################################################
-# NOTE: This function prints UI/prompts to STDERR so the caller can capture
-# stdout safely as a NUL-delimited package list.
 interactive_exclude_tier() {
   local tier="$1"; shift
   local -a pkgs=("$@")
 
   if [ "${#pkgs[@]}" -eq 0 ]; then
-    echo >&2
-    printf "%s [%s] No packages found.\n" "$SKIP" "$tier" >&2
+    echo
+    printf "%s [%s] No packages found.\n" "$SKIP" "$tier"
     printf '%s\0' "${pkgs[@]}"
     return 0
   fi
 
-  echo >&2
-  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET" >&2
+  echo
+  printf "%s%s[%s] Packages%s\n" "$BOLD" "$CYAN" "$tier" "$RESET"
   local i=1
   for p in "${pkgs[@]}"; do
-    printf "  %2d) %s\n" "$i" "$p" >&2
+    printf "  %2d) %s\n" "$i" "$p"
     i=$((i+1))
   done
 
   if [ "$INTERACTIVE" -ne 1 ]; then
-    printf "\nPress Enter to continue (%d packages)..." "${#pkgs[@]}" >&2
-    read -r _ || true
     printf '%s\0' "${pkgs[@]}"
     return 0
   fi
 
-  echo >&2
-  printf "Select packages to EXCLUDE for [%s] (e.g. '1 3 7-9'), or press Enter to install all: " "$tier" >&2
-  read -r sel || true
+  echo
+  printf "Select packages to EXCLUDE for [%s] (e.g. '1 3 7-9'), or press Enter to install all: " "$tier"
+  read -r sel </dev/tty || true
   sel="${sel:-}"
 
   if [ -z "$sel" ]; then
@@ -231,10 +227,8 @@ interactive_exclude_tier() {
     out+=("${pkgs[$((j-1))]}")
   done
 
-  echo >&2
-  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}" >&2
-
-  # IMPORTANT: only the NUL-delimited list goes to stdout (captured by caller)
+  echo
+  printf "%s [%s] Will install: %d packages\n" "$OK" "$tier" "${#out[@]}"
   printf '%s\0' "${out[@]}"
 }
 
@@ -255,7 +249,8 @@ ensure_yay() {
   [ "$BOOTSTRAP_YAY" -eq 1 ] || return 1
   have_cmd yay && return 0
 
-  sudo pacman -S --noconfirm --needed git base-devel >/dev/null 2>&1 || true
+  wait_pacman_lock
+  sudo pacman -S --noconfirm --needed git base-devel </dev/tty >/dev/null 2>&1 || true
 
   local u tmpdir
   u="$(yay_user)"
@@ -268,24 +263,26 @@ ensure_yay() {
     git clone https://aur.archlinux.org/yay.git
     cd yay
     makepkg -si --noconfirm
-  "
+  " </dev/tty
 }
 
 ###############################################################################
-# Install functions
+# Install functions (NOW ACTUALLY LIVE)
 ###############################################################################
-install_repo_pkgs() {
+install_repo_pkgs_live() {
+  local logfile="$1"; shift
   local -a pkgs=("$@")
   [ "${#pkgs[@]}" -eq 0 ] && return 0
-  sudo pacman -S --noconfirm --needed "${pkgs[@]}"
+  wait_pacman_lock
+  run_pkg_cmd_live "$logfile" "sudo pacman -S --noconfirm --needed ${pkgs[*]}"
 }
 
-install_aur_pkgs() {
+install_aur_pkgs_live() {
+  local logfile="$1"; shift
   local -a pkgs=("$@")
   [ "${#pkgs[@]}" -eq 0 ] && return 0
 
   if ! have_cmd yay; then
-    # If yay itself is requested, bootstrap it
     local needs_yay=0 p
     for p in "${pkgs[@]}"; do
       [ "$p" = "yay" ] && needs_yay=1 && break
@@ -300,21 +297,19 @@ install_aur_pkgs() {
       pkgs=("${rest[@]}")
       [ "${#pkgs[@]}" -eq 0 ] && return 0
     else
-      echo "ERROR: AUR packages requested but 'yay' is not installed."
+      echo "ERROR: AUR packages requested but 'yay' is not installed." | indent
       return 1
     fi
   fi
 
+  local yay_flags=(--noconfirm --needed --answerclean None --answerdiff None)
   local u
   u="$(yay_user)"
 
-  # Prevent yay prompting (cleanBuild/diffs)
-  local yay_flags=(--noconfirm --needed --answerclean None --answerdiff None)
-
   if [ "$(id -u)" -eq 0 ]; then
-    su - "$u" -c "yay ${yay_flags[*]} -S ${pkgs[*]}"
+    run_pkg_cmd_live "$logfile" "su - '$u' -c \"yay ${yay_flags[*]} -S ${pkgs[*]}\""
   else
-    yay "${yay_flags[@]}" -S "${pkgs[@]}"
+    run_pkg_cmd_live "$logfile" "yay ${yay_flags[*]} -S ${pkgs[*]}"
   fi
 }
 
@@ -331,9 +326,10 @@ install_tier() {
   fi
 
   local -a pkgs=()
-  while IFS= read -r -d '' p; do pkgs+=("$p"); done < <(read_packages_file "$file")
+  while IFS= read -r -d '' p; do
+    [ -n "${p:-}" ] && pkgs+=("$p")
+  done < <(read_packages_file "$file")
 
-  # apply global excludes (from EXCLUDE_PACKAGES and prior tier choices)
   local -a filtered=()
   local p
   for p in "${pkgs[@]}"; do
@@ -341,13 +337,15 @@ install_tier() {
     filtered+=("$p")
   done
 
-  # ask exclusions for THIS tier and add them to global EXCL
   local -a chosen=()
-  while IFS= read -r -d '' p; do chosen+=("$p"); done < <(interactive_exclude_tier "$tier" "${filtered[@]}")
+  while IFS= read -r -d '' p; do
+    [ -n "${p:-}" ] && chosen+=("$p")
+  done < <(interactive_exclude_tier "$tier" "${filtered[@]}")
 
-  # any package in filtered but not in chosen is excluded from now on
   declare -A keep=()
-  for p in "${chosen[@]}"; do keep["$p"]=1; done
+  for p in "${chosen[@]}"; do
+    keep["$p"]=1
+  done
   for p in "${filtered[@]}"; do
     if [[ -z "${keep[$p]+x}" ]]; then
       EXCL["$p"]=1
@@ -361,14 +359,13 @@ install_tier() {
 
   echo
   printf "%s Install [%s] now? [Y/n] " "$BOLD" "$tier"
-  read -r ans || true
+  read -r ans </dev/tty || true
   ans="${ans:-Y}"
   case "$ans" in
     Y|y|yes|YES) ;;
     *) printf "%s [%s] Skipped by user.\n" "$SKIP" "$tier"; return 0 ;;
   esac
 
-  # split using cache
   local -a repo_pkgs=()
   local -a aur_pkgs=()
   for p in "${chosen[@]}"; do
@@ -382,36 +379,43 @@ install_tier() {
   echo
   printf "%s [%s] Repo: %d | AUR: %d\n" "$OK" "$tier" "${#repo_pkgs[@]}" "${#aur_pkgs[@]}"
 
-  local out
-  out="$(mktemp)"
-  spinner_start "Installing [$tier]"
+  local log
+  log="$(mktemp)"
 
   set +e
-  {
-    install_repo_pkgs "${repo_pkgs[@]}"
-    install_aur_pkgs  "${aur_pkgs[@]}"
-  } >"$out" 2>&1
-  local code=$?
-  set -e
-
-  spinner_stop "$code" "Installed [$tier]"
-
-  if [ "$VERBOSE" -eq 1 ] || [ "$code" -ne 0 ]; then
-    if [ -s "$out" ]; then
-      indent <"$out"
-      printf "%s" "$RESET"
+  if [ "$VERBOSE" -eq 1 ]; then
+    install_repo_pkgs_live "$log" "${repo_pkgs[@]}"
+    code=$?
+    if [ "$code" -eq 0 ]; then
+      install_aur_pkgs_live "$log" "${aur_pkgs[@]}"
+      code=$?
+    fi
+  else
+    # Quiet mode: keep logging, but don't spam output
+    install_repo_pkgs_live "$log" "${repo_pkgs[@]}" >/dev/null 2>&1
+    code=$?
+    if [ "$code" -eq 0 ]; then
+      install_aur_pkgs_live "$log" "${aur_pkgs[@]}" >/dev/null 2>&1
+      code=$?
     fi
   fi
+  set -e
 
-  rm -f "$out"
+  if [ "$code" -eq 0 ]; then
+    printf "%s Installed [%s]\n" "$OK" "$tier"
+  else
+    printf "%s Installed [%s]\n" "$ERR" "$tier"
+    echo "${DIM}Last output (log):${RESET}"
+    tail -n 40 "$log" | indent
+  fi
+
+  rm -f "$log"
   return "$code"
 }
 
 ###############################################################################
 # MAIN
 ###############################################################################
-printf "%s%sMaster package install%s (%s)\n" "$BOLD" "$CYAN" "$RESET" "$PKG_DIR"
-
 build_repo_cache
 
 RAN=0
@@ -425,10 +429,14 @@ for entry in "${TIERS[@]}"; do
     RAN=$((RAN + 1))
   else
     FAILED=$((FAILED + 1))
+    echo
+    echo "${ERR} Stopping due to failure."
+    break
   fi
 done
 
-printf "\n%sSUMMARY%s\n" "$BOLD" "$RESET"
+echo
+printf "%sSUMMARY%s\n" "$BOLD" "$RESET"
 printf "  %s tiers completed: %s\n" "$OK" "$RAN"
 printf "  %s tiers failed:    %s\n" "$ERR" "$FAILED"
 
