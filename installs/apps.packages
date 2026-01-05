@@ -13,6 +13,7 @@ nautilus
 
 # Terminal
 kitty
+exa
 zsh
 zsh-completions
 zsh-theme-powerlevel10k
