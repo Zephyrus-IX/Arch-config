@@ -23,7 +23,7 @@ SUDO_KEEPALIVE=1
 INTERACTIVE=1
 
 # Where your tiered package files live
-PKG_DIR="install/packaging"
+PKG_DIR="installs"
 
 # If yay is needed and not installed, auto-bootstrap it from AUR.
 BOOTSTRAP_YAY=1
