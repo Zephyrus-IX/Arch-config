@@ -22,7 +22,6 @@ git
 github-cli
 onefetch
 lazygit
-stow
 
 # VPNs
 tailscale
