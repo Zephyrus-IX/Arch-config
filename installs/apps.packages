@@ -16,6 +16,7 @@ kitty
 zsh
 zsh-completions
 zsh-theme-powerlevel10k
+ttf-meslo-nerd-font-powerlevel10k
 
 # Image viewer
 imv
