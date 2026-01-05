@@ -13,6 +13,8 @@ nautilus
 
 # Terminal
 kitty
+zsh
+zsh-completions
 
 # Image viewer
 imv
