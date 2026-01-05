@@ -15,6 +15,7 @@ nautilus
 kitty
 zsh
 zsh-completions
+zsh-theme-powerlevel10k
 
 # Image viewer
 imv
