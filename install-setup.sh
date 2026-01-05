@@ -10,13 +10,17 @@ set -euo pipefail
 # - START_AT / STOP_AT controls
 # - --list / --dry-run / --help
 # - Optional interactive prompt when run with no args
+#
+# IMPORTANT:
+# - Runs child scripts in the FOREGROUND with the real TTY.
+# - Do NOT redirect their output, or sudo/pacman/yay prompts will break.
 ###############################################################################
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$ROOT_DIR/scripts"
 
 ###############################################################################
-# PRETTY OUTPUT (colors/icons)  (kept consistent with your style)
+# PRETTY OUTPUT (colors/icons)
 ###############################################################################
 if [ -t 1 ]; then
   RED="$(printf '\033[0;31m')"
@@ -36,8 +40,6 @@ ERR="${RED}✖${RESET}"
 SKIP="${YELLOW}↷${RESET}"
 RUN="${CYAN}▶${RESET}"
 DOT="${DIM}${BLUE}│${RESET}"
-
-indent() { sed "s/^/${DIM}${BLUE}│${RESET}${DIM}    /"; }
 
 ###############################################################################
 # SPLASH
@@ -89,28 +91,12 @@ YES="${YES:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --start-at)
-      shift
-      START_AT="${1:-}"
-      ;;
-    --stop-at)
-      shift
-      STOP_AT="${1:-}"
-      ;;
-    --list)
-      LIST_ONLY=1
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      ;;
-    -y|--yes)
-      YES=1
-      ;;
-    -h|--help)
-      splash
-      usage
-      exit 0
-      ;;
+    --start-at) shift; START_AT="${1:-}" ;;
+    --stop-at)  shift; STOP_AT="${1:-}" ;;
+    --list)     LIST_ONLY=1 ;;
+    --dry-run)  DRY_RUN=1 ;;
+    -y|--yes)   YES=1 ;;
+    -h|--help)  splash; usage; exit 0 ;;
     *)
       echo "${ERR} Unknown argument: $1"
       echo
@@ -121,21 +107,8 @@ while [ $# -gt 0 ]; do
   shift || true
 done
 
-# Validate numeric inputs
-case "$START_AT" in
-  ''|*[!0-9]*)
-    echo "${ERR} START_AT must be a non-negative integer"
-    exit 2
-    ;;
-esac
-
-case "$STOP_AT" in
-  ''|*[!0-9]*)
-    echo "${ERR} STOP_AT must be a non-negative integer"
-    exit 2
-    ;;
-esac
-
+case "$START_AT" in ''|*[!0-9]*) echo "${ERR} START_AT must be a non-negative integer"; exit 2 ;; esac
+case "$STOP_AT"  in ''|*[!0-9]*) echo "${ERR} STOP_AT must be a non-negative integer"; exit 2 ;; esac
 if [ "$START_AT" -gt "$STOP_AT" ]; then
   echo "${ERR} START_AT ($START_AT) cannot be greater than STOP_AT ($STOP_AT)"
   exit 2
@@ -150,8 +123,7 @@ if [ ! -d "$SCRIPTS_DIR" ]; then
 fi
 
 mapfile -t FILES < <(
-  find "$SCRIPTS_DIR" -maxdepth 1 -type f -name '*.sh' \
-  | sort
+  find "$SCRIPTS_DIR" -maxdepth 1 -type f -name '*.sh' | sort
 )
 
 if [ "${#FILES[@]}" -eq 0 ]; then
@@ -160,12 +132,9 @@ if [ "${#FILES[@]}" -eq 0 ]; then
 fi
 
 parse_step() {
-  # Extract numeric prefix before first dash: "30-services.sh" -> 30
-  # If missing or malformed, returns 9999 so it runs last.
   local base="$1"
   local prefix="${base%%-*}"
   if [[ "$prefix" =~ ^[0-9]+$ ]]; then
-    # base-10 normalize: "00" -> 0
     echo $((10#$prefix))
   else
     echo 9999
@@ -176,12 +145,8 @@ filtered_scripts=()
 for f in "${FILES[@]}"; do
   base="$(basename "$f")"
   step="$(parse_step "$base")"
-  if [ "$step" -lt "$START_AT" ]; then
-    continue
-  fi
-  if [ "$step" -gt "$STOP_AT" ]; then
-    continue
-  fi
+  [ "$step" -lt "$START_AT" ] && continue
+  [ "$step" -gt "$STOP_AT" ] && continue
   filtered_scripts+=("$f")
 done
 
@@ -222,16 +187,22 @@ if [ "${#filtered_scripts[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# If user ran with no args and hasn't opted out, show a short explainer + prompt.
-if [ "$YES" -ne 1 ] && [ "$DRY_RUN" -ne 1 ]; then
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "${DIM}Dry run selected. Would run:${RESET}"
+  for f in "${filtered_scripts[@]}"; do
+    printf "  ${DOT} %s\n" "$(basename "$f")"
+  done
+  exit 0
+fi
+
+if [ "$YES" -ne 1 ]; then
   echo "${DIM}This will run the following scripts in order:${RESET}"
   for f in "${filtered_scripts[@]}"; do
-    base="$(basename "$f")"
-    printf "  ${DOT} %s\n" "$base"
+    printf "  ${DOT} %s\n" "$(basename "$f")"
   done
   echo
   printf "%sProceed?%s [Y/n] " "$BOLD" "$RESET"
-  read -r ans </dev/tty || true
+  read -r ans || true
   ans="${ans:-Y}"
   case "$ans" in
     Y|y|yes|YES) ;;
@@ -239,45 +210,11 @@ if [ "$YES" -ne 1 ] && [ "$DRY_RUN" -ne 1 ]; then
   esac
 fi
 
-if [ "$DRY_RUN" -eq 1 ]; then
-  echo "${DIM}Dry run selected. Would run:${RESET}"
-  for f in "${filtered_scripts[@]}"; do
-    base="$(basename "$f")"
-    printf "  ${DOT} %s\n" "$base"
-  done
-  exit 0
-fi
-
 ###############################################################################
-# NEW: SUDO WARM-UP (prevents “nothing happening” at first sudo prompt)
-###############################################################################
-echo "${DIM}Authenticating sudo once (so prompts don't look like a hang)...${RESET}"
-sudo -v </dev/tty
-
-###############################################################################
-# RUNNER
+# RUNNER (foreground, real TTY)
 ###############################################################################
 RAN=0
 FAILED=0
-
-# Helper: run a script with a PTY so interactive prompts (sudo/read) work.
-# Captures output to a file for your existing indent/verbose behavior.
-run_with_tty() {
-  local script_path="$1"
-  local out_file="$2"
-
-  if command -v script >/dev/null 2>&1; then
-    # util-linux script allocates a pseudo-tty; -q quiet, -e return child exit, -f flush
-    # We also force stdin from /dev/tty so "read" always works.
-    script -qefc "bash \"$script_path\" </dev/tty" "$out_file"
-    return $?
-  fi
-
-  # Fallback if 'script' is missing: run directly with tty stdin and tee output.
-  # Note: Some programs may behave slightly differently without a PTY.
-  bash "$script_path" </dev/tty 2>&1 | tee "$out_file"
-  return "${PIPESTATUS[0]}"
-}
 
 for f in "${filtered_scripts[@]}"; do
   base="$(basename "$f")"
@@ -286,9 +223,8 @@ for f in "${filtered_scripts[@]}"; do
   echo
   printf "%s [%s] %s%s%s\n" "$RUN" "$step" "$BOLD" "$base" "$RESET"
 
-  out="$(mktemp)"
   set +e
-  run_with_tty "$f" "$out"
+  bash "$f"
   code=$?
   set -e
 
@@ -298,20 +234,6 @@ for f in "${filtered_scripts[@]}"; do
   else
     printf "%s [%s] %s\n" "$ERR" "$step" "$base"
     FAILED=$((FAILED + 1))
-  fi
-
-  # Print script output as an indented block (always if VERBOSE=1, else only on failure)
-  # NOTE: Output was already shown live; this is just your original “styled recap”.
-  if [ "${VERBOSE:-1}" -eq 1 ] || [ "$code" -ne 0 ]; then
-    if [ -s "$out" ]; then
-      indent <"$out"
-      printf "%s" "$RESET"
-    fi
-  fi
-
-  rm -f "$out"
-
-  if [ "$code" -ne 0 ]; then
     echo
     echo "${ERR} Stopping due to failure."
     break
