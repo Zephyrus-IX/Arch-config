@@ -23,7 +23,8 @@ SUDO_KEEPALIVE=1
 INTERACTIVE=1
 
 # Where your tiered package files live
-PKG_DIR="installs"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+PKG_DIR="$ROOT_DIR/installs"
 
 # If yay is needed and not installed, auto-bootstrap it from AUR.
 BOOTSTRAP_YAY=1
