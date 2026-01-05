@@ -231,7 +231,7 @@ if [ "$YES" -ne 1 ] && [ "$DRY_RUN" -ne 1 ]; then
   done
   echo
   printf "%sProceed?%s [Y/n] " "$BOLD" "$RESET"
-  read -r ans || true
+  read -r ans </dev/tty || true
   ans="${ans:-Y}"
   case "$ans" in
     Y|y|yes|YES) ;;
@@ -249,10 +249,35 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 ###############################################################################
+# NEW: SUDO WARM-UP (prevents “nothing happening” at first sudo prompt)
+###############################################################################
+echo "${DIM}Authenticating sudo once (so prompts don't look like a hang)...${RESET}"
+sudo -v </dev/tty
+
+###############################################################################
 # RUNNER
 ###############################################################################
 RAN=0
 FAILED=0
+
+# Helper: run a script with a PTY so interactive prompts (sudo/read) work.
+# Captures output to a file for your existing indent/verbose behavior.
+run_with_tty() {
+  local script_path="$1"
+  local out_file="$2"
+
+  if command -v script >/dev/null 2>&1; then
+    # util-linux script allocates a pseudo-tty; -q quiet, -e return child exit, -f flush
+    # We also force stdin from /dev/tty so "read" always works.
+    script -qefc "bash \"$script_path\" </dev/tty" "$out_file"
+    return $?
+  fi
+
+  # Fallback if 'script' is missing: run directly with tty stdin and tee output.
+  # Note: Some programs may behave slightly differently without a PTY.
+  bash "$script_path" </dev/tty 2>&1 | tee "$out_file"
+  return "${PIPESTATUS[0]}"
+}
 
 for f in "${filtered_scripts[@]}"; do
   base="$(basename "$f")"
@@ -263,7 +288,7 @@ for f in "${filtered_scripts[@]}"; do
 
   out="$(mktemp)"
   set +e
-  bash "$f" >"$out" 2>&1
+  run_with_tty "$f" "$out"
   code=$?
   set -e
 
@@ -276,6 +301,7 @@ for f in "${filtered_scripts[@]}"; do
   fi
 
   # Print script output as an indented block (always if VERBOSE=1, else only on failure)
+  # NOTE: Output was already shown live; this is just your original “styled recap”.
   if [ "${VERBOSE:-1}" -eq 1 ] || [ "$code" -ne 0 ]; then
     if [ -s "$out" ]; then
       indent <"$out"
