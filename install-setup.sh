@@ -115,6 +115,36 @@ if [ "$START_AT" -gt "$STOP_AT" ]; then
 fi
 
 ###############################################################################
+# SUBMODULES / OPTIONAL MODULE UPDATES
+###############################################################################
+# Only do git operations in real execution mode.
+# - --list and --dry-run should not modify the repo
+# - default behavior is pinned + reproducible submodules
+# - optional update-modules.sh run is explicit (default NO)
+if [ "$LIST_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
+  cd "$ROOT_DIR"
+
+  if [ -f "$ROOT_DIR/.gitmodules" ]; then
+    echo "${DIM}[*] Initializing submodules (pinned)...${RESET}"
+    git submodule update --init --recursive
+  fi
+
+  if [ "$YES" -ne 1 ] && [ -x "$ROOT_DIR/update-modules.sh" ]; then
+    echo
+    read -r -p "Update vendor modules before install? [y/N]: " reply || true
+    case "${reply:-N}" in
+      y|Y)
+        echo "${DIM}[*] Running update-modules.sh...${RESET}"
+        "$ROOT_DIR/update-modules.sh"
+        ;;
+      *)
+        echo "${DIM}[*] Skipping module updates.${RESET}"
+        ;;
+    esac
+  fi
+fi
+
+###############################################################################
 # DISCOVER SCRIPTS
 ###############################################################################
 if [ ! -d "$SCRIPTS_DIR" ]; then
