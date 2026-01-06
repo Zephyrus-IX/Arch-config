@@ -3,4 +3,5 @@ TODO List
  2. Go through and really flesh out the depth and coverage of the scripts from 10 on
     installing stuff works but need to ensure configurations can be properly applied
     safely
-3. 
+3. Eventually really streamline the way the setup installer prints out and what it does print 
+4. 
