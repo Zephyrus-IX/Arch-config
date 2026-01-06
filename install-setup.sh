@@ -20,6 +20,11 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$ROOT_DIR/scripts"
 
 ###############################################################################
+# SUDO WARM-UP (prompt immediately on start)
+###############################################################################
+sudo -v
+
+###############################################################################
 # PRETTY OUTPUT (colors/icons)
 ###############################################################################
 if [ -t 1 ]; then
@@ -112,36 +117,6 @@ case "$STOP_AT"  in ''|*[!0-9]*) echo "${ERR} STOP_AT must be a non-negative int
 if [ "$START_AT" -gt "$STOP_AT" ]; then
   echo "${ERR} START_AT ($START_AT) cannot be greater than STOP_AT ($STOP_AT)"
   exit 2
-fi
-
-###############################################################################
-# SUBMODULES / OPTIONAL MODULE UPDATES
-###############################################################################
-# Only do git operations in real execution mode.
-# - --list and --dry-run should not modify the repo
-# - default behavior is pinned + reproducible submodules
-# - optional update-modules.sh run is explicit (default NO)
-if [ "$LIST_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
-  cd "$ROOT_DIR"
-
-  if [ -f "$ROOT_DIR/.gitmodules" ]; then
-    echo "${DIM}[*] Initializing submodules (pinned)...${RESET}"
-    git submodule update --init --recursive
-  fi
-
-  if [ "$YES" -ne 1 ] && [ -x "$ROOT_DIR/update-modules.sh" ]; then
-    echo
-    read -r -p "Update vendor modules before install? [y/N]: " reply || true
-    case "${reply:-N}" in
-      y|Y)
-        echo "${DIM}[*] Running update-modules.sh...${RESET}"
-        "$ROOT_DIR/update-modules.sh"
-        ;;
-      *)
-        echo "${DIM}[*] Skipping module updates.${RESET}"
-        ;;
-    esac
-  fi
 fi
 
 ###############################################################################
@@ -238,6 +213,41 @@ if [ "$YES" -ne 1 ]; then
     Y|y|yes|YES) ;;
     *) echo "${SKIP} Aborted."; exit 0 ;;
   esac
+fi
+
+###############################################################################
+# SUBMODULES / OPTIONAL MODULE UPDATES (after Proceed)
+###############################################################################
+cd "$ROOT_DIR"
+
+if [ -f "$ROOT_DIR/.gitmodules" ]; then
+  echo
+  echo "${DIM}[*] Initializing submodules (pinned)...${RESET}"
+  git submodule update --init --recursive
+fi
+
+if [ "$YES" -ne 1 ] && [ -x "$ROOT_DIR/update-modules.sh" ]; then
+  echo
+  read -r -p "Update vendor modules before install? [y/N]: " reply || true
+  case "${reply:-N}" in
+    y|Y)
+      echo "${DIM}[*] Running update-modules.sh...${RESET}"
+      "$ROOT_DIR/update-modules.sh"
+      ;;
+    *)
+      echo "${DIM}[*] Skipping module updates.${RESET}"
+      ;;
+  esac
+fi
+
+###############################################################################
+# SUDO KEEPALIVE (once for entire run)
+###############################################################################
+if [ "${SUDO_KEEPALIVE:-1}" -eq 1 ]; then
+  ( while :; do sudo -n -v 2>/dev/null; sleep 60; done ) &
+  SUDO_KEEPALIVE_PID=$!
+  export SUDO_KEEPALIVE_PID
+  trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT INT TERM
 fi
 
 ###############################################################################
