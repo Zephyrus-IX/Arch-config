@@ -51,16 +51,50 @@ if [ "$SUDO_KEEPALIVE" -eq 1 ]; then
 fi
 
 ###############################################################################
-# TIER ORDER
+# TIER ORDER (auto-discover from installs/*.packages)
+#
+# Expected naming:
+#   NN-name.packages   (e.g. 00-base.packages, 10-helpers.packages, ...)
+#
+# Tier label rules:
+#   - Uses filename after numeric prefix and dash: "00-base.packages" -> "base"
+#   - If a file doesn't match NN-name.packages, it's ignored (so stray files won't break installs)
 ###############################################################################
-TIERS=(
-  "base:${PKG_DIR}/base.packages"
-  "helpers:${PKG_DIR}/helpers.packages"
-  "core:${PKG_DIR}/core.packages"
-  "services:${PKG_DIR}/services.packages"
-  "apps:${PKG_DIR}/apps.packages"
-  "cosmetic:${PKG_DIR}/cosmetic.packages"
-)
+discover_tiers() {
+  local dir="$1"
+  local -a files=()
+
+  # Collect and sort package files
+  while IFS= read -r f; do
+    files+=("$f")
+  done < <(find "$dir" -maxdepth 1 -type f -name '*.packages' | sort)
+
+  local -a tiers=()
+  local base name tier
+  for f in "${files[@]}"; do
+    base="$(basename "$f")"
+
+    # Only accept NN-name.packages
+    if [[ "$base" =~ ^([0-9]+)-(.+)\.packages$ ]]; then
+      name="${BASH_REMATCH[2]}"
+      tier="$name"
+      tiers+=("${tier}:${f}")
+    fi
+  done
+
+  printf '%s\0' "${tiers[@]}"
+}
+
+TIERS=()
+while IFS= read -r -d '' entry; do
+  TIERS+=("$entry")
+done < <(discover_tiers "$PKG_DIR")
+
+if [ "${#TIERS[@]}" -eq 0 ]; then
+  uiln "${SKIP} No tier files found in: $PKG_DIR"
+  uiln "${DIM}Expected: NN-name.packages (e.g. 00-base.packages)${RESET}"
+  exit 0
+fi
 
 ###############################################################################
 # PACKAGE FILE PARSING
