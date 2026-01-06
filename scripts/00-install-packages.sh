@@ -43,23 +43,49 @@ uiln() { printf "%b\n" "$*" >&2; }
 
 # --- Tier description box (cyan outline) -------------------------------------
 # Shows the top comment block from each *.packages file in a splash-like box.
+# Fixes:
+# - preserves intentional blank lines
+# - removes separator-only lines (####, ----, ====, etc)
+# - wraps long lines so the right border never "detaches" due to terminal wrapping
 print_box() {
   local text="$1"
-  local cols width line
+  local cols box_w inner
 
-  cols="$(tput cols 2>/dev/null || echo 80)"
-  width=$((cols - 4))
-  (( width < 40 )) && width=40
+  cols="$(tput cols 2>/dev/null || echo 100)"
 
-  printf "%s%s┏%s┓%s\n" "$BOLD" "$CYAN" "$(printf '━%.0s' $(seq 1 "$width"))" "$RESET"
+  # Keep the box within the terminal, but also not absurdly wide/narrow
+  box_w="$cols"
+  [ "$box_w" -gt 96 ] && box_w=96
+  [ "$box_w" -lt 60 ] && box_w=60
+
+  # inner width for content between "┃ " and " ┃"
+  inner=$((box_w - 4))
+
+  # Top border
+  printf "%s%s┏%s┓%s\n" "$BOLD" "$CYAN" "$(printf '━%.0s' $(seq 1 $((box_w - 2))))" "$RESET" >&2
+
+  # Body (wrap lines to inner width)
   while IFS= read -r line; do
-    printf "%s%s┃ %-${width}s ┃%s\n" "$BOLD" "$CYAN" "$line" "$RESET"
+    # Preserve blank spacer lines
+    if [ -z "$line" ]; then
+      printf "%s%s┃ %-${inner}s ┃%s\n" "$BOLD" "$CYAN" "" "$RESET" >&2
+      continue
+    fi
+
+    # Wrap long lines so terminal does NOT wrap them (keeps right border aligned)
+    while IFS= read -r chunk; do
+      printf "%s%s┃ %-${inner}s ┃%s\n" "$BOLD" "$CYAN" "$chunk" "$RESET" >&2
+    done < <(printf "%s\n" "$line" | fold -s -w "$inner")
   done <<< "$text"
-  printf "%s%s┗%s┛%s\n" "$BOLD" "$CYAN" "$(printf '━%.0s' $(seq 1 "$width"))" "$RESET"
+
+  # Bottom border
+  printf "%s%s┗%s┛%s\n" "$BOLD" "$CYAN" "$(printf '━%.0s' $(seq 1 $((box_w - 2))))" "$RESET" >&2
 }
 
 # Extract only the *leading* comment block, stripping the "#"
 # - stops at the first non-comment line so package lists aren't included
+# - removes separator-only lines like the giant "#######" lines
+# - keeps intentional blank lines in the header
 print_tier_description() {
   awk '
     BEGIN { in_header = 1 }
@@ -67,12 +93,13 @@ print_tier_description() {
     # Stop at first non-comment line
     in_header && $0 !~ /^[[:space:]]*#/ { exit }
 
-    # Only process comment lines
     in_header {
+      # Strip leading "# " (or "#")
       sub(/^[[:space:]]*#[[:space:]]?/, "", $0)
 
-      # Skip separator-only lines (==== ---- #### etc)
-      if ($0 ~ /^[[:space:]]*([=_\-*~.]+)[[:space:]]*$/)
+      # Skip separator-only lines (after stripping "#"):
+      # e.g. "#####", "=====", "-----", "***", "~~~~"
+      if ($0 ~ /^[[:space:]]*([#=_\-*~.]+)[[:space:]]*$/)
         next
 
       print
