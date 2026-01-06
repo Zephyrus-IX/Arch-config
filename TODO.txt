@@ -10,3 +10,5 @@ TODO List
 
 VM remote connection using virtviewer and tailscale
 spice://100.86.233.36:5900
+
+stopped watching the 2 hour guide at 1:06:00
