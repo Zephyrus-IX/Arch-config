@@ -47,8 +47,8 @@ DOT="${DIM}${BLUE}│${RESET}"
 splash() {
   echo
   printf "%s%s┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓%s\n" "$BOLD" "$CYAN" "$RESET"
-  printf "%s%s┃%s  Arch Hyprland Setup Runner                             %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$BOLD" "$RESET"
-  printf "%s%s┃%s  Runs scripts/ in order: 00-* → 10-* → 20-* ...         %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$BOLD" "$RESET"
+  printf "%s%s┃%s  Arch Hyprland Setup Runner                             %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$RESET"
+  printf "%s%s┃%s  Runs scripts/ in order: 00-* → 10-* → 20-* ...         %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$RESET"
   printf "%s%s┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛%s\n" "$BOLD" "$CYAN" "$RESET"
   echo
 }
