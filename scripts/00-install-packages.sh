@@ -61,22 +61,23 @@ print_box() {
 # Extract only the *leading* comment block, stripping the "#"
 # - stops at the first non-comment line so package lists aren't included
 print_tier_description() {
-  local file="$1"
-  sed -n '
-    /^[[:space:]]*#/ {
-      s/^[[:space:]]*#[[:space:]]\{0,1\}//;
-      p;
-      next
+  awk '
+    BEGIN { in_header = 1 }
+
+    # Stop at first non-comment line
+    in_header && $0 !~ /^[[:space:]]*#/ { exit }
+
+    # Only process comment lines
+    in_header {
+      sub(/^[[:space:]]*#[[:space:]]?/, "", $0)
+
+      # Skip separator-only lines (==== ---- #### etc)
+      if ($0 ~ /^[[:space:]]*([=_\-*~.]+)[[:space:]]*$/)
+        next
+
+      print
     }
-    1,/^[^#]/ {
-      /^[^#]/q
-    }
-  ' "$file" \
-  | awk '
-      # Drop lines that are only "separator characters"
-      /^[[:space:]]*([#=_\-\*~\.]+)[[:space:]]*$/ { next }
-      { print }
-    '
+  ' "$1"
 }
 
 ###############################################################################
