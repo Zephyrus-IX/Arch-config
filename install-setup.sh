@@ -251,6 +251,67 @@ if [ "${SUDO_KEEPALIVE:-1}" -eq 1 ]; then
 fi
 
 ###############################################################################
+# OPTIONAL SCRIPT EXCLUSION / PER-SCRIPT PROMPT (interactive)
+###############################################################################
+# Behavior:
+# - If YES=1: run everything (no prompts)
+# - Else: user may exclude scripts by number/range, and is prompted per script.
+###############################################################################
+
+# Build a menu list of selected scripts (in order)
+menu_items=()
+for f in "${filtered_scripts[@]}"; do
+  menu_items+=("$(basename "$f")")
+done
+
+# Map of basenames -> 1 means excluded
+declare -A EXCLUDED=()
+
+# Parse selections like: "1 3 7-9" (1-based indices)
+apply_exclusions() {
+  local input="$1"
+  local token start end i
+  for token in $input; do
+    if [[ "$token" =~ ^[0-9]+-[0-9]+$ ]]; then
+      start="${token%-*}"
+      end="${token#*-}"
+    elif [[ "$token" =~ ^[0-9]+$ ]]; then
+      start="$token"
+      end="$token"
+    else
+      continue
+    fi
+
+    # normalize ordering
+    if [ "$start" -gt "$end" ]; then
+      local tmp="$start"; start="$end"; end="$tmp"
+    fi
+
+    for ((i=start; i<=end; i++)); do
+      if [ "$i" -ge 1 ] && [ "$i" -le "${#menu_items[@]}" ]; then
+        EXCLUDED["${menu_items[$((i-1))]}"]=1
+      fi
+    done
+  done
+}
+
+if [ "$YES" -ne 1 ]; then
+  echo
+  printf "%s%sDetected script steps%s\n" "$BOLD" "$CYAN" "$RESET"
+  for i in "${!menu_items[@]}"; do
+    idx=$((i+1))
+    printf "  %s%2d)%s %s\n" "$DIM" "$idx" "$RESET" "${menu_items[$i]}"
+  done
+
+  echo
+  printf "Select scripts to EXCLUDE (e.g. '1 3 7-9'), or press Enter to run all: "
+  read -r exclude_sel || true
+  if [ -n "${exclude_sel:-}" ]; then
+    apply_exclusions "$exclude_sel"
+  fi
+fi
+
+###############################################################################
 # RUNNER (foreground, real TTY)
 ###############################################################################
 RAN=0
@@ -259,6 +320,25 @@ FAILED=0
 for f in "${filtered_scripts[@]}"; do
   base="$(basename "$f")"
   step="$(parse_step "$base")"
+
+  # Skip if excluded via menu
+  if [ "$YES" -ne 1 ] && [ "${EXCLUDED[$base]+x}" = "x" ]; then
+    echo
+    printf "%s [%s] %s\n" "$SKIP" "$step" "$base"
+    continue
+  fi
+
+  # Per-script prompt (like your package tiers)
+  if [ "$YES" -ne 1 ]; then
+    echo
+    printf "%sRun %s%s%s now?%s [Y/n] " "$DIM" "$BOLD" "$base" "$RESET" "$RESET"
+    read -r ans || true
+    ans="${ans:-Y}"
+    case "$ans" in
+      Y|y|yes|YES) ;;
+      *) printf "%s [%s] %s (skipped)\n" "$SKIP" "$step" "$base"; continue ;;
+    esac
+  fi
 
   echo
   printf "%s [%s] %s%s%s\n" "$RUN" "$step" "$BOLD" "$base" "$RESET"
