@@ -1,0 +1,6 @@
+TODO List
+ 1. Create a more robust splash or entry sceen to the main setup.sh script
+ 2. Go through and really flesh out the depth and coverage of the scripts from 10 on
+    installing stuff works but need to ensure configurations can be properly applied
+    safely
+3. 
