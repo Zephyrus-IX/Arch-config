@@ -9,4 +9,4 @@ TODO List
 
 
 VM remote connection using virtviewer and tailscale
-spice://100.86.233.3:5900
+spice://100.86.233.36:5900
