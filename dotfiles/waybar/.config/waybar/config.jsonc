@@ -1,0 +1,22 @@
+{
+    "position": "bottom",
+    "margin-top": 15,
+    "modules-left": [
+        "clock",
+        "hyprland/workspaces"
+    ],
+    "modules-center": [
+        "tray"
+    ],
+    "modules-right": [
+        "pulseaudio",
+        "network",
+        "battery",
+        "custom/notification"
+    ],
+    "clock": {
+        "interval": 60,
+        "format": "{:%H:%M}",
+        "max-length": 25
+    }
+}
