@@ -1,0 +1,32 @@
+###############################################################################
+# BASE PACKAGES (00)
+#
+# Purpose:
+#   Minimal, foundational system packages required for a usable Arch install.
+#   These should be safe, boring, and almost always installed.
+#
+# What belongs here:
+#   - Core system utilities (coreutils, util-linux, grep, sed, awk)
+#   - Filesystem tools
+#   - Networking basics (NetworkManager, iw, wireless tools)
+#   - Arch fundamentals (base, base-devel if required early)
+#
+# What does NOT belong here:
+#   - Desktop / GUI applications
+#   - Window managers or Wayland/X11 components
+#   - User shells, prompts, or theming tools
+#
+###############################################################################
+
+
+base
+base-devel
+linux
+linux-firmware
+sudo
+networkmanager
+git
+neovim
+curl
+wget
+openssh

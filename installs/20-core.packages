@@ -1,0 +1,65 @@
+###############################################################################
+# CORE PACKAGES (20)
+#
+# Purpose:
+#   Core user environment and workflow tooling that defines how the system
+#   is *used*, but is not a background service.
+#
+# What belongs here:
+#   - Shells (zsh, bash alternatives)
+#   - Terminal emulators
+#   - Editors (neovim)
+#   - Wayland compositors / window managers (hyprland)
+#   - Core CLI tools you always want on every machine
+#
+# What does NOT belong here:
+#   - Daemons that need enabling
+#   - Purely cosmetic/theming-only packages
+#
+###############################################################################
+
+
+# Hyprland + wayland packages
+hyprland
+wayland
+wayland-protocols
+xorg-xwayland
+
+# Graphics / Rendering
+mesa
+
+# Portals
+xdg-desktop-portal-gtk
+xdg-desktop-portal-hyprland
+
+# Session / login
+sddm
+uwsm
+
+# Menu Bar / App Launcher / Notification Manager
+waybar
+rofi
+swaync
+libnotify
+
+# Wallpaper & Theme manager / Lock Screen / idle daemon / logout menu
+swww
+hyprlock
+hypridle
+wlogout
+
+# Clipboard + screenshots
+wl-clipboard
+wl-clip-persist
+clipman
+grim
+slurp
+
+# Privilege Prompts
+polkit-gnome
+
+# Basic fonts
+noto-fonts
+noto-fonts-emoji
+ttf-font-awesome
+ttf-cascadia-code-nerd

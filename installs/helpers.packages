@@ -1,6 +1,0 @@
-# Arch-config helper package list installed via install/packaging/base.sh
-
-unzip
-stow
-go
-yay
