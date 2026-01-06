@@ -5,3 +5,8 @@ TODO List
     safely
 3. Eventually really streamline the way the setup installer prints out and what it does print 
 4. 
+
+
+
+VM remote connection using virtviewer and tailscale
+spice://100.86.233.3:5900
