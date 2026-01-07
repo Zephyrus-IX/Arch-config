@@ -41,6 +41,9 @@ ttf-meslo-nerd-font-powerlevel10k
 # Image viewer
 imv
 
+# Audio GUI
+pavucontrol
+
 # Git related apps
 git
 github-cli
