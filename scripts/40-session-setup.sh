@@ -34,3 +34,7 @@ for pkg in "${STOW_PACKAGES[@]}"; do
 done
 
 stow -t "$HOME" "${STOW_PACKAGES[@]}"
+
+
+# NEED TO USE THIS STYLE OF APPROACH FOR THE FOLDER ITSELF TO BE UNLINKED
+# mkdir -p ~/.config/swaync && stow -t ~ swaync
