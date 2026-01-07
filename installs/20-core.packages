@@ -57,9 +57,3 @@ slurp
 
 # Privilege Prompts
 polkit-gnome
-
-# Basic fonts
-noto-fonts
-noto-fonts-emoji
-ttf-font-awesome
-ttf-cascadia-code-nerd
