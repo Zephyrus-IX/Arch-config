@@ -17,3 +17,17 @@
 #
 ###############################################################################
 
+
+# Fonts
+noto-fonts
+noto-fonts-emoji
+ttf-font-awesome
+ttf-cascadia-code-nerd
+
+
+# Manager (GTK Settings App)
+nwg-look
+
+
+# GTK themes
+adw-gtk-theme
