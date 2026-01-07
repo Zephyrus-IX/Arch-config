@@ -13,6 +13,7 @@ TODO List
 9. Get global rofi themes to work
 10. Setup a OS wide theme switcher. (Take all themes from omarchy)
 11. EVENTUALLY create a really nice readme and give credit to all repos I took dotfiles or other configs from (Include as vendors?)
+12. The dark-basic theme breaks my script switch cause it also has a folder called scripts which overwrites it, rename required
 
 
 
