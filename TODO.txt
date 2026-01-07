@@ -4,7 +4,15 @@ TODO List
     installing stuff works but need to ensure configurations can be properly applied
     safely
 3. Eventually really streamline the way the setup installer prints out and what it does print 
-4. 
+4. Make it so that once my rofi style menu selects something it copies the files to the local directory not the git repo otherwise the
+    repo is always gonna be complaining about git changes anytime a layout is switched.
+5. Set up a sexy ass GRUB bootloader theme
+6. Restructure the rofi stow package for better file structure
+7. Create a similar structure for all packages
+8. Figure out how to have image previes for every apps layout options
+9. Get global rofi themes to work
+10. Setup a OS wide theme switcher. (Take all themes from omarchy)
+11. EVENTUALLY create a really nice readme and give credit to all repos I took dotfiles or other configs from (Include as vendors?)
 
 
 
