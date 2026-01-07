@@ -6,13 +6,15 @@ menu="$(
     "SwayNC → Layout" \
     "Waybar → Layout" \
     "Wallpaper → Select" \
+    "Rofi App Launcher → Layout" \
     | rofi -dmenu -i -p "Control Center"
 )"
 
 [[ -z "${menu:-}" ]] && exit 0
 
 case "$menu" in
-  "SwayNC → Layout")  ~/.config/swaync/scripts/switch-layout.sh ;;
-  "Waybar → Layout")  ~/.config/waybar/scripts/switch-layout.sh ;;
-  "Wallpaper → Select") ~/.config/swww/scripts/switch-wallpaper.sh ;;
+  "SwayNC → Layout")  ~/.config/swaync/bin/switch-layout.sh ;;
+  "Waybar → Layout")  ~/.config/waybar/bin/switch-layout.sh ;;
+  "Wallpaper → Select") ~/.config/swww/bin/switch-wallpaper.sh ;;
+  "Rofi App Launcher → Layout") ~/.config/rofi/scripts/switch-launcher-layout.sh ;;
 esac
