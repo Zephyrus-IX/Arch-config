@@ -24,4 +24,5 @@ unzip
 stow
 rsync
 go
+jq
 yay
