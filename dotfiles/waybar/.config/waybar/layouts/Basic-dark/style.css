@@ -1,4 +1,4 @@
-@import '../system-theme/generated/waybar-colors.css';
+@import 'shared/waybar-colors.css';
 
 * {
     border: none;
