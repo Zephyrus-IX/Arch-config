@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-menu="$(
-  printf "%s\n" \
-    "SwayNC → Layout" \
-    "Waybar → Layout" \
-    "Wallpaper → Select" \
-    "Rofi App Launcher → Layout" \
-    | rofi -dmenu -i -p "Control Center"
-)"
+ROFI_THEME="${ROFI_THEME:-$HOME/.config/rofi/layouts/control-center/control-center.rasi}"
+PROMPT="${PROMPT:-Control Center | }"
 
+ENTRIES=(
+  "SwayNC → Layout|$HOME/.config/swaync/bin/switch-layout.sh"
+  "Waybar → Layout|$HOME/.config/waybar/bin/switch-layout.sh"
+  "Wallpaper → Select|$HOME/.config/rofi/scripts/switch-wallpaper.sh"
+  "Wlogout → Layout|$HOME/.config/wlogout/bin/switch-layout.sh"
+  "Rofi App Launcher → Layout|$HOME/.config/rofi/scripts/switch-launcher-layout.sh"
+  "Rofi Theme Switcher → Theme|$HOME/.config/system-theme/bin/apply-theme.sh"
+)
+
+menu="$(printf '%s\n' "${ENTRIES[@]%%|*}" | rofi -dmenu -i -p "$PROMPT" -theme "$ROFI_THEME")"
 [[ -z "${menu:-}" ]] && exit 0
 
-case "$menu" in
-  "SwayNC → Layout")  ~/.config/swaync/bin/switch-layout.sh ;;
-  "Waybar → Layout")  ~/.config/waybar/bin/switch-layout.sh ;;
-  "Wallpaper → Select") ~/.config/swww/bin/switch-wallpaper.sh ;;
-  "Rofi App Launcher → Layout") ~/.config/rofi/scripts/switch-launcher-layout.sh ;;
-esac
+for entry in "${ENTRIES[@]}"; do
+  label="${entry%%|*}"
+  cmd="${entry#*|}"
+  if [[ "$label" == "$menu" ]]; then
+    # Run directly (preserves your Wayland session env)
+    exec "$cmd"
+  fi
+done

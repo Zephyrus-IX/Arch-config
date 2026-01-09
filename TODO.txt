@@ -1,20 +1,32 @@
 TODO List
- 1. Create a more robust splash or entry sceen to the main setup.sh script
+
  2. Go through and really flesh out the depth and coverage of the scripts from 10 on
     installing stuff works but need to ensure configurations can be properly applied
     safely
 3. Eventually really streamline the way the setup installer prints out and what it does print 
-4. Make it so that once my rofi style menu selects something it copies the files to the local directory not the git repo otherwise the
-    repo is always gonna be complaining about git changes anytime a layout is switched.
+
 5. Set up a sexy ass GRUB bootloader theme
-6. Restructure the rofi stow package for better file structure
-7. Create a similar structure for all packages
-8. Figure out how to have image previes for every apps layout options
+8. Figure out how to have image previews for every apps layout options
 9. Get global rofi themes to work
 10. Setup a OS wide theme switcher. (Take all themes from omarchy)
 11. EVENTUALLY create a really nice readme and give credit to all repos I took dotfiles or other configs from (Include as vendors?)
-12. The dark-basic theme breaks my script switch cause it also has a folder called scripts which overwrites it, rename required
 
+
+14. Figure out how to set what package manager downloads a given package
+15. Update the main script to act as a Master config tool even after an install. Give it a menu like: Welcome to arch config manager...
+    then you can choose to perform the initiall install (Comeup with someway to block out this setting once an install has been performed), give it the ability to run 
+    management scripts like restowing dotfiles etc, and maybe even a uninstaller (not sure how that would work) Oh and it should be launchable through the rofi control center.
+    Oh yah and on an initiall install all other menu options other than "install" or "exit" should be blocked off. Maybe use a file with status bits or something???
+16. Figure out how to make a yay and pacman interactive package install/remove menu like omarchy
+
+
+17. I can use hyprlands window settings to apply animations to specific windows and rofi can apply unique window names at as one of its call arguments.
+    This will allow for unique menu animations!!!
+
+18. Need to learn to apply notifications to scripts and how to assign a proper "app" that they are from.
+
+
+NEED TO FIX/COME UP WITH A WAY TO SYMLINK THE FONT AND COLOR FILE FOR ROFI TO THE SHARED FOLDER!!!!!!!!
 
 
 VM remote connection using virtviewer and tailscale

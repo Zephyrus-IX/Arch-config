@@ -33,6 +33,7 @@ nautilus
 # Terminal
 kitty
 exa
+tree
 zsh
 zsh-completions
 zsh-theme-powerlevel10k
@@ -46,6 +47,7 @@ pavucontrol
 
 # Music apps
 spotify
+cider
 
 # Git related apps
 git

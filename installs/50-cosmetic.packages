@@ -19,13 +19,14 @@
 
 
 # Fonts
+font-manager
 noto-fonts
 noto-fonts-emoji
 ttf-font-awesome
 ttf-cascadia-code-nerd
 
 
-# Manager (GTK Settings App)
+# GTK Theme Manager (GTK Settings App)
 nwg-look
 
 
