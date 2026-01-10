@@ -1,3 +1,6 @@
+############################################################################
+# General Rules
+
 # Editor / temp files
 *~
 *.swp
@@ -15,3 +18,37 @@ logs/
 
 # Bash leftovers
 *.bak
+
+
+############################################################################
+# DOTFILES | System-theme
+
+
+# Local runtime state (machine-specific)
+state/*
+
+# Auto-theme generated palette (changes often)
+auto/palette.json
+auto/wallpaper.current
+
+# Keep the folders tracked so they get created when stowed/copied
+!.keep
+!state/.keep
+!auto/.keep
+
+############################################################################
+# DOTFILES | Waybar
+
+# Ignore the currently applied layout which is copied to the 
+# root of .config/waybar from /layout
+dotfiles/waybar/.config/waybar/config.jsonc
+dotfiles/waybar/.config/waybar/style.css
+
+############################################################################
+# DOTFILES | Wlogout
+
+# Ignore the currently applied layout which is copied to the 
+# root of .config/wlogout from /layout
+dotfiles/wlogout/.config/wlogout/layout
+dotfiles/wlogout/.config/wlogout/icons
+dotfiles/wlogout/.config/wlogout/style.css
