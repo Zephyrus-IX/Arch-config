@@ -1,0 +1,114 @@
+configuration {
+    modi:                        "drun";
+    show-icons:                  true;
+    drun-display-format:         "{name}";
+}
+
+@import "../../shared/rofi-colors.rasi"
+@import "../../shared/rofi-font.rasi"
+
+window {
+    enabled:                     true;
+    fullscreen:                  false;
+
+    location:                    south;
+    anchor:                      south;
+    y-offset:                    -20px;
+
+    width:                       100%;
+
+    transparency:                "real";
+    cursor:                      "default";
+    padding:                     0px;
+    border:                      0px;
+    background-color:            transparent;
+}
+
+mainbox {
+    enabled:                     true;
+    background-color:            @background;
+    border-radius:               22px;
+    padding:                     14px 18px;
+
+    children:                    [ "inputbar", "listview" ];
+}
+
+inputbar {
+    enabled:                     true;
+    padding:                     8px 14px;
+    margin:                      0px 0px 12px 0px;
+    border-radius:               16px;
+    background-color:            @background-alt;
+    children:                    [ "prompt", "entry" ];
+}
+
+prompt {
+    enabled:                     true;
+    text-color:                  @background;
+    background-color:            transparent;
+    padding:                     0px 6px 0px 0px;
+    font:                        @font-bold;
+}
+
+entry {
+    enabled:                     true;
+    vertical-align:              0.5;
+    placeholder:                 "Search…";
+    placeholder-color:           @background;
+    text-color:                  @background;
+    background-color:            transparent;
+}
+
+listview {
+    enabled:                     true;
+    columns:                     6;
+    lines:                       1;
+    spacing:                     30px;
+    padding:                     0px 12px 4px 12px;
+
+    cycle:                       true;
+    dynamic:                     false;
+    scrollbar:                   false;
+    layout:                      vertical;
+    reverse:                     false;
+    fixed-height:                true;
+    fixed-columns:               true;
+
+    cursor:                      "default";
+    background-color:            transparent;
+    text-color:                  @foreground;
+}
+
+element {
+    enabled:                     true;
+    orientation:                 vertical;
+    spacing:                     0px;
+    padding:                     3px;
+    border-radius:               20px;
+    cursor:                      pointer;
+    background-color:            transparent;
+    text-color:                  @foreground;
+}
+
+element selected.normal,
+element selected.active {
+    background-color:            @selected;
+    text-color:                  @background;
+}
+
+element-icon {
+    size:                        25%;
+    border-radius:               20px;
+    cursor:                      inherit;
+    background-color:            transparent;
+    text-color:                  inherit;
+}
+
+element-text {
+    vertical-align:              0.5;
+    horizontal-align:            0.5;
+    padding:                     10px 0px 8px 0px;
+    cursor:                      inherit;
+    background-color:            transparent;
+    text-color:                  inherit;
+}
