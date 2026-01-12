@@ -13,13 +13,12 @@ window {
 
     location:                    south;
     anchor:                      south;
-    y-offset:                    -20px;
 
     width:                       100%;
 
     transparency:                "real";
     cursor:                      "default";
-    padding:                     0px;
+    padding:                     0px 10px 20px 10px;
     border:                      0px;
     background-color:            transparent;
 }
@@ -27,7 +26,9 @@ window {
 mainbox {
     enabled:                     true;
     background-color:            @background;
+    border:                      1px;
     border-radius:               22px;
+    border-color:                @background-alt;
     padding:                     14px 18px;
 
     children:                    [ "inputbar", "listview" ];
@@ -61,7 +62,7 @@ entry {
 
 listview {
     enabled:                     true;
-    columns:                     6;
+    columns:                     7;
     lines:                       1;
     spacing:                     30px;
     padding:                     0px 12px 4px 12px;
