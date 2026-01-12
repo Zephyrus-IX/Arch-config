@@ -1,0 +1,11 @@
+{
+  "bg": "#0b0f14",
+  "bg2": "#121a22",
+  "fg": "#e6edf3",
+  "muted": "#9aa4ad",
+  "accent": "#7aa2f7",
+  "accent2": "#2ac3de",
+  "success": "#9ece6a",
+  "warning": "#e0af68",
+  "error": "#f7768e"
+}
