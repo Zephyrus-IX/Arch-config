@@ -22,6 +22,11 @@
 # General user apps
 thunderbird
 nordpass-bin
+obsidian
+
+# Gaming
+steam
+discord
 
 # Browser
 firefox
@@ -42,8 +47,14 @@ ttf-meslo-nerd-font-powerlevel10k
 # Image viewer
 imv
 
+# Media Player
+vlc
+
 # Audio GUI
 pavucontrol
+
+# CLI Audio Visualizer
+cava
 
 # Music apps
 spotify
@@ -67,6 +78,9 @@ fastfetch
 figlet
 cowsay
 cmatrix
+pipes.sh
+cbonsai
+pokemon-colorscripts
 
 
 # Anything else???
