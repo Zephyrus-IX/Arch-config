@@ -24,6 +24,85 @@ TODO List
     This will allow for unique menu animations!!!
 
 18. Need to learn to apply notifications to scripts and how to assign a proper "app" that they are from.
+19. Implement the ability to hit back space to go back in nested rofi menus
+20. Make so that when I open certain apps the open in the current workspace instead of always the first one
+21. Fix waybar not properly refreshing on theme changes
+22. Setup lazy vim
+23. install BTOP for a system resource manager
+24. Install hyprcursor and set up custom cursors
+25. oh-my-zsh and tmux?????
+26. yazi terminal file manager?????
+27. Make sure all apps that need autostart configs or services set to run at boot are set (ex. arch-update)
+28. Set up things like spicetify, and other apps that can be themed
+29. Get a bluetooth manager
+30. Get a clipboard menu to work
+
+
+1️⃣ What belongs in your Control Center (ideas)
+
+Given what you already manage (themes, layouts, wallpaper), these fit naturally:
+
+🔧 System / Session
+
+Reload WM / Bar
+
+Restart Waybar
+
+Restart SwayNC
+
+Lock Screen
+
+Logout / Reboot / Shutdown
+
+Toggle idle inhibitor
+
+Toggle night mode / gamma
+
+🎨 Appearance
+
+Themes (already done)
+
+Wallpapers (already done)
+
+Font scale
+
+Cursor theme
+
+GTK theme
+
+Icon theme
+
+Rofi theme
+
+Hyprland border style
+
+Animation presets
+
+🧠 Behavior / Toggles
+
+Enable / disable animations
+
+Enable / disable blur
+
+Enable / disable transparency
+
+Power profile (balanced / performance / powersave)
+
+Laptop mode
+
+🧩 Utilities
+
+Screenshot
+
+Clipboard history
+
+Audio output switch
+
+Mic mute toggle
+
+Bluetooth menu
+
+Network menu
 
 
 NEED TO FIX/COME UP WITH A WAY TO SYMLINK THE FONT AND COLOR FILE FOR ROFI TO THE SHARED FOLDER!!!!!!!!
@@ -31,5 +110,3 @@ NEED TO FIX/COME UP WITH A WAY TO SYMLINK THE FONT AND COLOR FILE FOR ROFI TO TH
 
 VM remote connection using virtviewer and tailscale
 spice://100.86.233.36:5900
-
-stopped watching the 2 hour guide at 1:06:00
