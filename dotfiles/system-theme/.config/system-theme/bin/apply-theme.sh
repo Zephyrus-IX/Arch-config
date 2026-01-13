@@ -39,7 +39,7 @@ CURRENT_WALLPAPER_LINK="$STATE_DIR/current-wallpaper"
 AUTO_WALLPAPER_FILE="$AUTO_DIR/wallpaper.current"
 AUTO_PALETTE_JSON="$AUTO_DIR/palette.json"
 
-RENDER_SCRIPT="$SYS_DIR/bin/render.sh"
+RENDER_SCRIPT="$SYS_DIR/bin/compile-templates.sh"
 
 ###############################################################################
 # UTILITIES
