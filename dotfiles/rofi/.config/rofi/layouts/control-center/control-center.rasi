@@ -45,7 +45,7 @@ inputbar {
 
 prompt {
     enabled:                     true;
-    text-color:                  @background;
+    text-color:                  @foreground;
     background-color:            transparent;
     padding:                     0px 6px 0px 0px;
     font:                        @font-bold;
@@ -55,8 +55,8 @@ entry {
     enabled:                     true;
     vertical-align:              0.5;
     placeholder:                 "Search…";
-    placeholder-color:           @background;
-    text-color:                  @background;
+    placeholder-color:           @foreground;
+    text-color:                  @foreground;
     background-color:            transparent;
 }
 
@@ -98,7 +98,7 @@ element selected.active {
 }
 
 element-icon {
-    size:                        25%;
+    size:                        140px;
     border-radius:               20px;
     cursor:                      inherit;
     background-color:            transparent;
