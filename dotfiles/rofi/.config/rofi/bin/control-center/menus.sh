@@ -112,50 +112,32 @@ MENU_OPTIONS_main=(
     MENU_PROMPT_layouts="Select a layout to manage | "
     MENU_THEME_layouts="$LAYOUTS_DIR/control-center/control-center.rasi"
     MENU_OPTIONS_layouts=(
-    "Wlogout Layout →|menu:wlogout"
-    "App Launcher Layout →|menu:launcher"
-    "SwayNC Layout →|menu:swaync"
-    "Waybar Layout →|menu:waybar"
+      "Wlogout Layout →|menu:wlogout"
+      "App Launcher Layout →|menu:launcher"
+      "SwayNC Layout →|menu:swaync"
+      "Waybar Layout →|menu:waybar"
     )
 
         MENU_PROMPT_wlogout="Waybar Layout | "
-        MENU_THEME_wlogout=""
+        MENU_THEME_wlogout="$LAYOUTS_DIR/launchers/launcher-picker.rasi"
         MENU_OPTIONS_wlogout=(
-        "dyn:$HOME/.config/wlogout/layouts|$HOME/.config/wlogout/bin/apply-layout.sh"
+          "dyn:$HOME/.config/wlogout/layouts|$HOME/.config/wlogout/bin/apply-layout.sh"
         )
 
         MENU_PROMPT_launcher="Choose a layout | "
         MENU_THEME_launcher="$LAYOUTS_DIR/launchers/launcher-picker.rasi"
         MENU_OPTIONS_launcher=(
-        "dyn:$HOME/.config/rofi/layouts/launchers/|$HOME/.config/rofi/bin/switch-launcher-layout.sh"
+          "dyn:$HOME/.config/rofi/layouts/launchers/|$HOME/.config/rofi/bin/switch-launcher-layout.sh"
         )
 
     MENU_PROMPT_wallpapers="Choose a wallpaper | "
     MENU_THEME_wallpapers="$LAYOUTS_DIR/wall-picker/wall-picker.rasi"
     MENU_OPTIONS_wallpapers=(
-    "dyn:$HOME/.config/system-theme/themes/$CURRENT_THEME/wallpapers/|$HOME/.config/swww/apply-wallpaper.sh"
+      "dyn:$HOME/.config/system-theme/themes/$CURRENT_THEME/wallpapers/|$HOME/.config/swww/apply-wallpaper.sh"
     )
 
-    MENU_PROMPT_themes="Choose a wallpaper | "
+    MENU_PROMPT_themes="Choose a theme | "
     MENU_THEME_themes="$LAYOUTS_DIR/wall-picker/wall-picker.rasi"
     MENU_OPTIONS_themes=(
-    "dyn:$HOME/.config/system-theme/themes/|$HOME/.config/system-theme/bin/apply-theme.sh"
+      "dyn:$HOME/.config/system-theme/themes/|$HOME/.config/system-theme/bin/apply-theme.sh"
     )
-
-# use then delete
-  SWAYNC_LAYOUT_MENU="../layouts/theme-picker/theme-select.rasi"
-  WAYBAR_LAYOUT_MENU="../layouts/theme-picker/theme-select.rasi"
-  APP_LAUCNHER_LAYOUT_MENU=''
-  WLOGOUT_LAYOUT_MENU="../layouts/theme-picker/theme-select.rasi"
-
-WALLPAPER_MENU="../layouts/wall-picker/wall-picker.rasi"
-THEME_MENU="../layouts/theme-picker/theme-picker.rasi"
-
-
-
-# example of adding icons to static menus
-# MENU_OPTIONS_main=(
-#   "System Layout Settings →\0icon\x1f$ICON_LAYOUT|menu:layouts"
-#   "Select Wallpaper →\0icon\x1f$ICON_WALLPAPER|menu:wallpapers"
-#   "Themes →\0icon\x1f$ICON_THEME|menu:themes"
-# )
