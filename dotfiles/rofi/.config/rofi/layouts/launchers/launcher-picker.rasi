@@ -45,8 +45,8 @@ listview {
     columns: 6;
     fixed-height: true;
     spacing: 12px;
+    text-color: @foreground;
 }
-
 
 element {
     border-radius: 18px;
@@ -56,12 +56,26 @@ element {
 
     /* Make the tile a predictable size so icon can center */
     orientation: vertical;
+    text-color: @foreground;
 }
 
+element selected normal,
+element selected active {
+    background-color: @selected;  
+    text-color: @background; 
+}
 
 element-text {
-    padding: 35px 15px;
-    enabled: false;
+    enabled: true;
+
+    horizontal-align: 0.5;
+    vertical-align: 0.0;
+
+    expand: false;   /* ← IMPORTANT */
+
+    padding: 4px 6px 0px 6px;
+    text-color: inherit;
+    background-color: transparent;
 }
 
 element-icon {
@@ -73,14 +87,7 @@ element-icon {
     vertical-align: 0.5;
 
     /* Let it use available tile space */
-    expand: true;
+    expand: false;
 
     cursor: inherit;
-}
-
-
-element selected normal,
-element selected active {
-    background-color: @foreground;  
-    text-color: @background; 
 }
