@@ -36,6 +36,7 @@ TODO List
 28. Set up things like spicetify, and other apps that can be themed
 29. Get a bluetooth manager
 30. Get a clipboard menu to work
+31. Make a smoother refresh script
 
 
 1️⃣ What belongs in your Control Center (ideas)
