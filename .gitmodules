@@ -1,0 +1,3 @@
+[submodule "vendor/Elegant-grub2-themes"]
+	path = vendor/Elegant-grub2-themes
+	url = https://github.com/vinceliuice/Elegant-grub2-themes
