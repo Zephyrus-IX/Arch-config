@@ -19,6 +19,9 @@ logs/
 # Bash leftovers
 *.bak
 
+# Ignore the TODO.txt
+TODO.txt
+
 
 ############################################################################
 # DOTFILES | System-theme
