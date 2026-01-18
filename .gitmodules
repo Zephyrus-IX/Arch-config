@@ -1,3 +1,0 @@
-[submodule "vendor/adi1090x-rofi"]
-	path = vendor/adi1090x-rofi
-	url = https://github.com/adi1090x/rofi.git
