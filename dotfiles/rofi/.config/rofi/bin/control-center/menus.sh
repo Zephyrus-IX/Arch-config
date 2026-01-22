@@ -127,7 +127,7 @@ MENU_OPTIONS_main=(
         MENU_PROMPT_launcher="Choose a layout | "
         MENU_THEME_launcher="$LAYOUTS_DIR/launchers/launcher-picker.rasi"
         MENU_OPTIONS_launcher=(
-          "dyn:$HOME/.config/rofi/layouts/launchers/|$HOME/.config/rofi/bin/switch-launcher-layout.sh"
+          "dyn:$HOME/.config/rofi/layouts/launchers/|$HOME/.config/rofi/bin/apply-launcher.sh"
         )
 
     MENU_PROMPT_wallpapers="Choose a wallpaper | "
