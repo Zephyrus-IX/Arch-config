@@ -1,0 +1,23 @@
+###############################################################################
+# VM INTEGRATION PACKAGES (15)
+#
+# Purpose:
+#   Minimal packages required for proper guest ↔ host integration when
+#   running inside a virtual machine.
+#
+# What belongs here:
+#   - QEMU / libvirt guest agents
+#   - SPICE integration tools (clipboard, resize, input sync)
+#   - Packages that only make sense inside a VM
+#
+# What does NOT belong here:
+#   - Desktop environments or window managers
+#   - Wayland / X11 stacks
+#   - General user applications
+#   - Packages that are also required on bare metal
+#
+###############################################################################
+
+
+qemu-guest-agent
+spice-vdagent

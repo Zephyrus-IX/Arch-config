@@ -1,0 +1,86 @@
+###############################################################################
+# USER APPLICATIONS (40)
+#
+# Purpose:
+#   Interactive applications used directly by the user.
+#   These are often personal preference.
+#
+# What belongs here:
+#   - Browsers
+#   - Launchers (rofi)
+#   - File managers
+#   - Media players
+#   - GUI tools
+#
+# What does NOT belong here:
+#   - System services
+#   - Libraries or dependencies only
+#
+###############################################################################
+
+
+# General user apps
+thunderbird
+nordpass-bin
+obsidian
+
+# Gaming
+steam
+discord
+
+# Browser
+firefox
+microsoft-edge-stable-bin
+
+# File manager
+nautilus
+
+# Terminal
+kitty
+exa
+tree
+zsh
+zsh-completions
+zsh-theme-powerlevel10k
+ttf-meslo-nerd-font-powerlevel10k
+
+# Image viewer
+imv
+
+# Media Player
+vlc
+
+# Audio GUI
+pavucontrol
+
+# CLI Audio Visualizer
+cava
+
+# Music apps
+spotify
+cider
+
+# Git related apps
+git
+github-cli
+onefetch
+lazygit
+
+# VPNs
+tailscale
+nordvpn-bin
+nordvpn-gui
+
+# System info apps
+fastfetch
+
+# Silly CLI apps
+figlet
+cowsay
+cmatrix
+pipes.sh
+cbonsai
+pokemon-colorscripts
+
+
+# Anything else???

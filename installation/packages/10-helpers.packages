@@ -1,0 +1,28 @@
+###############################################################################
+# HELPER PACKAGES (10)
+#
+# Purpose:
+#   Tooling that *supports* the rest of the system and install process.
+#   These make everything else easier, but are not core OS components.
+#
+# What belongs here:
+#   - AUR helpers (yay, paru)
+#   - Git
+#   - Stow
+#   - Downloaders (wget, curl)
+#   - CLI utilities used by install scripts
+#
+# What does NOT belong here:
+#   - Daemons or long-running services
+#   - Desktop environment components
+#   - End-user applications
+#
+###############################################################################
+
+
+unzip
+stow
+rsync
+go
+jq
+yay

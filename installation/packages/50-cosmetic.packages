@@ -1,0 +1,40 @@
+###############################################################################
+# COSMETIC / THEMING PACKAGES (50)
+#
+# Purpose:
+#   Visual appearance, theming, fonts, and purely aesthetic enhancements.
+#   Safe to skip on minimal or headless installs.
+#
+# What belongs here:
+#   - Fonts (nerd-fonts, icon fonts)
+#   - Icon themes
+#   - Cursor themes
+#   - GTK/QT themes
+#
+# What does NOT belong here:
+#   - Anything required for functionality
+#   - Daemons or services
+#
+###############################################################################
+
+
+# Fonts
+font-manager
+noto-fonts
+noto-fonts-emoji
+ttf-font-awesome
+ttf-cascadia-code-nerd
+
+# Spotify Theme tool
+spicetify
+
+# GTK Theme Manager (GTK Settings App)
+nwg-look
+
+
+# GTK themes
+adw-gtk-theme
+
+
+# Wallpaper color picker
+matugen-bin

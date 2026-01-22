@@ -1,0 +1,41 @@
+###############################################################################
+# SERVICES / DAEMONS (30)
+#
+# Purpose:
+#   Background services and daemons that are enabled via systemd
+#   (system-wide or user-level).
+#
+# What belongs here:
+#   - Notification daemons (swaync)
+#   - Wallpaper daemons (swww)
+#   - Audio services (pipewire, wireplumber)
+#   - Bluetooth, printing, power management services
+#
+# What does NOT belong here:
+#   - Applications you manually launch
+#   - Fonts, themes, icons
+#
+###############################################################################
+
+# Arch-Update
+arch-update
+
+# Audio Stack
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+wireplumber
+
+# Networking / Discovery
+nss-mdns
+
+# Power / Time
+power-profiles-daemon
+
+# Printing / FirewaLL
+cups
+cups-filters
+cups-browsed
+cups-pdf
+ufw
