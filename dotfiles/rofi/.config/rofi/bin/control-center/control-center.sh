@@ -50,19 +50,35 @@ _menu_get_options_var() {
 
 _list_layouts_with_icons() {
   local layouts_root="${1:?layouts_root required}"
-  local layout_dir name icon
+  local name layout_dir icon
 
-  shopt -s nullglob
-  for layout_dir in "$layouts_root"/*/; do
-    name="${layout_dir%/}"; name="${name##*/}"
+  # Get folder names sorted naturally (style-2 before style-10)
+  while IFS= read -r name; do
+    layout_dir="$layouts_root/$name/"
+
+    # Preferred icon names:
+    #   1) preview.png
+    #   2) <foldername>.png
     icon="$layout_dir/preview.png"
+    [[ -f "$icon" ]] || icon="$layout_dir/$name.png"
+
+    # Fallback: first image in folder
+    if [[ ! -f "$icon" ]]; then
+      shopt -s nullglob
+      local first=()
+      first=("$layout_dir"*.png "$layout_dir"*.jpg "$layout_dir"*.jpeg "$layout_dir"*.webp)
+      shopt -u nullglob
+      [[ -f "${first[0]:-}" ]] && icon="${first[0]}"
+    fi
 
     if [[ -f "$icon" ]]; then
       printf '%s\0icon\x1f%s\n' "$name" "$icon"
     else
       printf '%s\n' "$name"
     fi
-  done
+  done < <(
+    find -L "$layouts_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V
+  )
 }
 
 _list_image_files_with_icons() {
@@ -147,6 +163,29 @@ _run_dynamic_menu() {
     is_back "$exit_code" && return 10
     [[ -z "${selection:-}" ]] && return 0
 
+    # ------------------------------------------------------------
+    # NEW: If selected folder contains subfolders, do a second picker
+    # This supports structures like:
+    #   root/type-1/style-7/
+    # while preserving existing one-level behavior (wlogout, etc.)
+    # ------------------------------------------------------------
+    local selected_dir="$layouts_root/$selection"
+
+    if compgen -G "$selected_dir"/*/ >/dev/null; then
+      local selection2 exit_code2
+      selection2="$(_list_layouts_with_icons "$selected_dir" | rofi_dmenu "$prompt" "$theme")" || exit_code2=$?
+      exit_code2="${exit_code2:-0}"
+
+      [[ $exit_code2 -eq 1 ]] && return 1
+      is_back "$exit_code2" && return 10
+      [[ -z "${selection2:-}" ]] && return 0
+
+      # Pass as "type/style" (single arg) so apply scripts can parse easily
+      "$apply_script" "$selection/$selection2"
+      return 0
+    fi
+
+    # One-level folder layout (existing behavior)
     "$apply_script" "$selection"
     return 0
   else
