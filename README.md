@@ -23,27 +23,41 @@ Follow the outlined steps below. Each step has a dropdown with detailed instruct
   <img src="https://github.com/homarr-labs/dashboard-icons/blob/main/png/arch-linux.png" width="20" height="20"/>
 </summary>
 
-<blockquote>
+  <blockquote>
+  <p>
+  Step 1: Download an Arch Linux ISO from:<br>
+  https://archlinux.org/download/
+  </p>
+  
+  <p>
+  Step 2: Download an imaging tool. I recommend Rufus:<br>
+  https://rufus.ie/en/
+  </p>
+  
+  <p>
+    Step 3: Flash the image to a USB with the same settings as below
+  </p>
+  
+  <p>
+    Step 4: Insert the USB into the computer you wish to install Arch on and boot the USB
+  </p>
 
-<p>
-Step 1: Download an Arch Linux ISO from:<br>
-https://archlinux.org/download/
-</p>
+  <p>
+    Step 5: Select the first option and start the Arch Live ISO
+  </p>
 
-<p>
-Step 2: Download an imaging tool. I recommend Rufus:<br>
-https://rufus.ie/en/
-</p>
+  <p>
+    Step 6: Ensure you have an internet connection by testing a ping command: "ping google.com"
+  </p>
 
-<p>
-  Step 3: Flash the image to a USB with the same settings as below
-</p>
+  <p>
+    Step 7: Launch the archinstall script by typing: "archinstall"
+  </p>
 
-<p>
-  Step 4: Insert the USB into the computer you wish to install Arch on and boot the USB
-</p>
-
-</blockquote>
+  <p>
+    Step 8: 
+  </p>
+  </blockquote>
 </details>
 
 
