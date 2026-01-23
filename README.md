@@ -44,6 +44,8 @@ Follow the outlined steps below. Each step has a dropdown with detailed instruct
 
   <p>
     Step 5: Select the first option and start the Arch Live ISO
+    <img src=readme-files/in1.png width=600 height=600>
+    <img src=readme-files/in2.png width=600 height=600>
   </p>
 
   <p>
@@ -52,10 +54,58 @@ Follow the outlined steps below. Each step has a dropdown with detailed instruct
 
   <p>
     Step 7: Launch the archinstall script by typing: "archinstall"
+    <img src=readme-files/in3.png width=600 height=600>
   </p>
 
   <p>
-    Step 8: 
+    Step 8: Now that we are running the Archinstall script, set your language
+    <img src=readme-files/in4.png width=600 height=600>
+  </p>
+
+  <p>
+    Step 9: Then set you locales (If located in north america use the same options as below)
+    <img src=readme-files/in5.png width=600 height=600>
+  </p>
+
+  <p>
+    Step 10: Select mirrors and repositories, then select your country from the list
+    <img src=readme-files/in6.png width=600 height=600>
+    <img src=readme-files/in7.png width=600 height=600>
+    <img src=readme-files/in8.png width=600 height=600>
+  </p>
+
+  <p>
+    Step 11: Now we must configure our disks and partitions.
+    <img src=readme-files/in9.png width=600 height=600>
+    <img src=readme-files/in10.png width=600 height=600>
+    <img src=readme-files/in11.png width=600 height=600>
+    <img src=readme-files/in12.png width=600 height=600>
+    <img src=readme-files/in13.png width=600 height=600>
+    <img src=readme-files/in14.png width=600 height=600>
+    <img src=readme-files/in16.png width=600 height=600>
+    Make sure the partition Arch will be installed on is mounted as "/"
+    <img src=readme-files/in17.png width=600 height=600>
+    Once everything is selected you will be shown a summary of your partition layout
+    <img src=readme-files/in18.png width=600 height=600>
+    You do not need to enable disk encryption unless you want to
+    <img src=readme-files/in20.png width=600 height=600>
+  </p>
+
+  <p>
+    Step 12: Swap settings can be left on their defaults. (See below) Change them at your own discretion.
+    <img src=readme-files/in21.png width=600 height=600>
+  </p>
+
+  <p>
+    Step 13: Change the bootloader to be GRUB
+    <img src=readme-files/in20.png width=600 height=600>
+    <img src=readme-files/in21.png width=600 height=600>
+    <img src=readme-files/in22.png width=600 height=600>
+    <img src=readme-files/in23.png width=600 height=600>
+    <img src=readme-files/in24.png width=600 height=600>
+    <img src=readme-files/in25.png width=600 height=600>
+    <img src=readme-files/in26.png width=600 height=600>
+    <img src=readme-files/in27.png width=600 height=600>
   </p>
   </blockquote>
 </details>
