@@ -2,27 +2,39 @@
 set -euo pipefail
 
 ###############################################################################
-# install-setup.sh
-# Entry point: runs scripts in /scripts in numeric order (00-*, 10-*, 20-*...)
+# INSTALL SETUP RUNNER
+#
+# Entry point: runs scripts in ./installation/scripts in numeric order
+# (00-*, 10-*, 20-*...)
 #
 # Features:
 # - Splash header
 # - START_AT / STOP_AT controls
 # - --list / --dry-run / --help
-# - Optional interactive prompt when run with no args
+# - Optional interactive prompts (exclude menu + per-script confirm)
 #
 # IMPORTANT:
 # - Runs child scripts in the FOREGROUND with the real TTY.
 # - Do NOT redirect their output, or sudo/pacman/yay prompts will break.
 ###############################################################################
 
+###############################################################################
+# CONFIG / PATHS (single place to edit later)
+###############################################################################
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPTS_DIR="$ROOT_DIR/scripts"
 
-###############################################################################
-# SUDO WARM-UP (prompt immediately on start)
-###############################################################################
-sudo -v
+# Repo layout:
+#   ./install-setup.sh
+#   ./installation/scripts/*.sh
+#   ./installation/packages/*.packages
+INSTALLATION_DIR="$ROOT_DIR/installation"
+SCRIPTS_DIR="$INSTALLATION_DIR/scripts"
+PACKAGES_DIR="$INSTALLATION_DIR/packages"
+
+# Defaults (can be overridden by env vars)
+DEFAULT_START_AT=0
+DEFAULT_STOP_AT=9999
+DEFAULT_YES=0
 
 ###############################################################################
 # PRETTY OUTPUT (colors/icons)
@@ -47,13 +59,23 @@ RUN="${CYAN}▶${RESET}"
 DOT="${DIM}${BLUE}│${RESET}"
 
 ###############################################################################
-# SPLASH
+# HELPERS (small + readable)
 ###############################################################################
+die() {
+  echo "install-setup: $*" >&2
+  exit 1
+}
+
+is_int() {
+  local s="${1:-}"
+  [[ -n "$s" && "$s" =~ ^[0-9]+$ ]]
+}
+
 splash() {
   echo
   printf "%s%s┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓%s\n" "$BOLD" "$CYAN" "$RESET"
   printf "%s%s┃%s  Arch Hyprland Setup Runner                              %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$RESET"
-  printf "%s%s┃%s  Runs scripts/ in order: 00-* → 10-* → 20-* ...          %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$RESET"
+  printf "%s%s┃%s  Runs installation/scripts in order: 00-* → 10-* → ...   %s%s┃%s\n" "$BOLD" "$CYAN" "$RESET" "$DIM" "$CYAN" "$RESET"
   printf "%s%s┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛%s\n" "$BOLD" "$CYAN" "$RESET"
   echo
 }
@@ -75,6 +97,7 @@ Environment variables (alternative to flags):
   START_AT=N
   STOP_AT=N
   YES=1
+  SUDO_KEEPALIVE=1  (default: 1)
 
 Examples:
   ./install-setup.sh
@@ -85,14 +108,24 @@ Examples:
 EOF
 }
 
+parse_step() {
+  local base="${1:?basename required}"
+  local prefix="${base%%-*}"
+  if [[ "$prefix" =~ ^[0-9]+$ ]]; then
+    echo $((10#$prefix))
+  else
+    echo 9999
+  fi
+}
+
 ###############################################################################
 # ARG PARSING
 ###############################################################################
-START_AT="${START_AT:-0}"
-STOP_AT="${STOP_AT:-9999}"
+START_AT="${START_AT:-$DEFAULT_START_AT}"
+STOP_AT="${STOP_AT:-$DEFAULT_STOP_AT}"
+YES="${YES:-$DEFAULT_YES}"
 DRY_RUN=0
 LIST_ONLY=0
-YES="${YES:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -112,38 +145,24 @@ while [ $# -gt 0 ]; do
   shift || true
 done
 
-case "$START_AT" in ''|*[!0-9]*) echo "${ERR} START_AT must be a non-negative integer"; exit 2 ;; esac
-case "$STOP_AT"  in ''|*[!0-9]*) echo "${ERR} STOP_AT must be a non-negative integer"; exit 2 ;; esac
-if [ "$START_AT" -gt "$STOP_AT" ]; then
-  echo "${ERR} START_AT ($START_AT) cannot be greater than STOP_AT ($STOP_AT)"
-  exit 2
-fi
+is_int "$START_AT" || die "START_AT must be a non-negative integer"
+is_int "$STOP_AT"  || die "STOP_AT must be a non-negative integer"
+[ "$START_AT" -le "$STOP_AT" ] || die "START_AT ($START_AT) cannot be greater than STOP_AT ($STOP_AT)"
 
 ###############################################################################
-# DISCOVER SCRIPTS
+# PRE-FLIGHT
 ###############################################################################
-if [ ! -d "$SCRIPTS_DIR" ]; then
-  echo "${ERR} Missing scripts directory: $SCRIPTS_DIR"
-  exit 1
-fi
+[ -d "$INSTALLATION_DIR" ] || die "missing installation directory: $INSTALLATION_DIR"
+[ -d "$SCRIPTS_DIR" ] || die "missing scripts directory: $SCRIPTS_DIR"
+[ -d "$PACKAGES_DIR" ] || die "missing packages directory: $PACKAGES_DIR"
 
 mapfile -t FILES < <(
   find "$SCRIPTS_DIR" -maxdepth 1 -type f -name '*.sh' | sort
 )
 
-if [ "${#FILES[@]}" -eq 0 ]; then
+[ "${#FILES[@]}" -gt 0 ] || {
   echo "${SKIP} No scripts found in: $SCRIPTS_DIR"
   exit 0
-fi
-
-parse_step() {
-  local base="$1"
-  local prefix="${base%%-*}"
-  if [[ "$prefix" =~ ^[0-9]+$ ]]; then
-    echo $((10#$prefix))
-  else
-    echo 9999
-  fi
 }
 
 filtered_scripts=()
@@ -156,14 +175,16 @@ for f in "${FILES[@]}"; do
 done
 
 ###############################################################################
-# LIST / DRY RUN
+# UI: HEADER / LIST / DRY-RUN
 ###############################################################################
 splash
 
-printf "%sRepo:%s      %s\n" "$BOLD" "$RESET" "$ROOT_DIR"
-printf "%sScripts:%s   %s\n" "$BOLD" "$RESET" "$SCRIPTS_DIR"
-printf "%sRange:%s     %s → %s\n" "$BOLD" "$RESET" "$START_AT" "$STOP_AT"
-printf "%sMode:%s      %s\n" "$BOLD" "$RESET" "$([ "$DRY_RUN" -eq 1 ] && echo "dry-run" || echo "execute")"
+printf "%sRepo:%s         %s\n" "$BOLD" "$RESET" "$ROOT_DIR"
+printf "%sInstall dir:%s  %s\n" "$BOLD" "$RESET" "$INSTALLATION_DIR"
+printf "%sScripts:%s      %s\n" "$BOLD" "$RESET" "$SCRIPTS_DIR"
+printf "%sPackages:%s     %s\n" "$BOLD" "$RESET" "$PACKAGES_DIR"
+printf "%sRange:%s        %s → %s\n" "$BOLD" "$RESET" "$START_AT" "$STOP_AT"
+printf "%sMode:%s         %s\n" "$BOLD" "$RESET" "$([ "$DRY_RUN" -eq 1 ] && echo "dry-run" || echo "execute")"
 echo
 
 if [ "$LIST_ONLY" -eq 1 ]; then
@@ -173,6 +194,7 @@ if [ "$LIST_ONLY" -eq 1 ]; then
     step="$(parse_step "$base")"
     printf "  %s%4s%s  %s\n" "$DIM" "$step" "$RESET" "$base"
   done
+
   echo
   printf "%s%sSelected scripts%s\n" "$BOLD" "$CYAN" "$RESET"
   if [ "${#filtered_scripts[@]}" -eq 0 ]; then
@@ -200,6 +222,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
+###############################################################################
+# SUDO WARM-UP (prompt immediately on start)
+###############################################################################
+sudo -v
+
+###############################################################################
+# OPTIONAL CONFIRMATION
+###############################################################################
 if [ "$YES" -ne 1 ]; then
   echo "${DIM}This will run the following scripts in order:${RESET}"
   for f in "${filtered_scripts[@]}"; do
@@ -212,31 +242,6 @@ if [ "$YES" -ne 1 ]; then
   case "$ans" in
     Y|y|yes|YES) ;;
     *) echo "${SKIP} Aborted."; exit 0 ;;
-  esac
-fi
-
-###############################################################################
-# SUBMODULES / OPTIONAL MODULE UPDATES (after Proceed)
-###############################################################################
-cd "$ROOT_DIR"
-
-if [ -f "$ROOT_DIR/.gitmodules" ]; then
-  echo
-  echo "${DIM}[*] Initializing submodules (pinned)...${RESET}"
-  git submodule update --init --recursive
-fi
-
-if [ "$YES" -ne 1 ] && [ -x "$ROOT_DIR/update-modules.sh" ]; then
-  echo
-  read -r -p "Update vendor modules before install? [y/N]: " reply || true
-  case "${reply:-N}" in
-    y|Y)
-      echo "${DIM}[*] Running update-modules.sh...${RESET}"
-      "$ROOT_DIR/update-modules.sh"
-      ;;
-    *)
-      echo "${DIM}[*] Skipping module updates.${RESET}"
-      ;;
   esac
 fi
 
@@ -257,20 +262,17 @@ fi
 # - If YES=1: run everything (no prompts)
 # - Else: user may exclude scripts by number/range, and is prompted per script.
 ###############################################################################
-
-# Build a menu list of selected scripts (in order)
 menu_items=()
 for f in "${filtered_scripts[@]}"; do
   menu_items+=("$(basename "$f")")
 done
 
-# Map of basenames -> 1 means excluded
 declare -A EXCLUDED=()
 
-# Parse selections like: "1 3 7-9" (1-based indices)
 apply_exclusions() {
-  local input="$1"
+  local input="${1:-}"
   local token start end i
+
   for token in $input; do
     if [[ "$token" =~ ^[0-9]+-[0-9]+$ ]]; then
       start="${token%-*}"
@@ -282,7 +284,6 @@ apply_exclusions() {
       continue
     fi
 
-    # normalize ordering
     if [ "$start" -gt "$end" ]; then
       local tmp="$start"; start="$end"; end="$tmp"
     fi
@@ -321,14 +322,12 @@ for f in "${filtered_scripts[@]}"; do
   base="$(basename "$f")"
   step="$(parse_step "$base")"
 
-  # Skip if excluded via menu
   if [ "$YES" -ne 1 ] && [ "${EXCLUDED[$base]+x}" = "x" ]; then
     echo
     printf "%s [%s] %s\n" "$SKIP" "$step" "$base"
     continue
   fi
 
-  # Per-script prompt (like your package tiers)
   if [ "$YES" -ne 1 ]; then
     echo
     printf "%sRun %s%s%s now?%s [Y/n] " "$DIM" "$BOLD" "$base" "$RESET" "$RESET"
