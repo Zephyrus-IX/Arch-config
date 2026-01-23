@@ -3,6 +3,8 @@ set -euo pipefail
 
 ###############################################################################
 # 00-install-packages.sh
+# Installs tiered packages from ./installation/packages/*.packages
+#
 # Fix: print the exclusion UI to STDERR to avoid buffering when stdout is piped.
 ###############################################################################
 
@@ -12,8 +14,17 @@ SUDO_KEEPALIVE="${SUDO_KEEPALIVE:-1}"
 INTERACTIVE="${INTERACTIVE:-1}"
 BOOTSTRAP_YAY="${BOOTSTRAP_YAY:-1}"
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-PKG_DIR="${PKG_DIR:-$ROOT_DIR/installs}"
+###############################################################################
+# CONFIG / PATHS (single place to edit later)
+###############################################################################
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# Script lives in: ./installation/scripts/00-install-packages.sh
+# Repo root is:   ./ (two levels up from this script)
+ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+
+INSTALLATION_DIR="${INSTALLATION_DIR:-$ROOT_DIR/installation}"
+PKG_DIR="${PKG_DIR:-$INSTALLATION_DIR/packages}"
 
 ###############################################################################
 # PRETTY OUTPUT (kept consistent)
@@ -41,64 +52,46 @@ RUN="${CYAN}▶${RESET}"
 ui() { printf "%b" "$*" >&2; }
 uiln() { printf "%b\n" "$*" >&2; }
 
-# --- Tier description box (cyan outline) -------------------------------------
-# Shows the top comment block from each *.packages file in a splash-like box.
-# Fixes:
-# - preserves intentional blank lines
-# - removes separator-only lines (####, ----, ====, etc)
-# - wraps long lines so the right border never "detaches" due to terminal wrapping
+###############################################################################
+# Tier description box (cyan outline)
+###############################################################################
 print_box() {
   local text="$1"
   local cols box_w inner
 
   cols="$(tput cols 2>/dev/null || echo 100)"
 
-  # Keep the box within the terminal, but also not absurdly wide/narrow
   box_w="$cols"
   [ "$box_w" -gt 96 ] && box_w=96
   [ "$box_w" -lt 60 ] && box_w=60
 
-  # inner width for content between "┃ " and " ┃"
   inner=$((box_w - 4))
 
-  # Top border
   printf "%s%s┏%s┓%s\n" "$BOLD" "$CYAN" "$(printf '━%.0s' $(seq 1 $((box_w - 2))))" "$RESET" >&2
 
-  # Body (wrap lines to inner width)
   while IFS= read -r line; do
-    # Preserve blank spacer lines
     if [ -z "$line" ]; then
       printf "%s%s┃ %-${inner}s ┃%s\n" "$BOLD" "$CYAN" "" "$RESET" >&2
       continue
     fi
 
-    # Wrap long lines so terminal does NOT wrap them (keeps right border aligned)
     while IFS= read -r chunk; do
       printf "%s%s┃ %-${inner}s ┃%s\n" "$BOLD" "$CYAN" "$chunk" "$RESET" >&2
     done < <(printf "%s\n" "$line" | fold -s -w "$inner")
   done <<< "$text"
 
-  # Bottom border
   printf "%s%s┗%s┛%s\n" "$BOLD" "$CYAN" "$(printf '━%.0s' $(seq 1 $((box_w - 2))))" "$RESET" >&2
 }
 
-# Extract only the *leading* comment block, stripping the "#"
-# - stops at the first non-comment line so package lists aren't included
-# - removes separator-only lines like the giant "#######" lines
-# - keeps intentional blank lines in the header
 print_tier_description() {
   awk '
     BEGIN { in_header = 1 }
 
-    # Stop at first non-comment line
     in_header && $0 !~ /^[[:space:]]*#/ { exit }
 
     in_header {
-      # Strip leading "# " (or "#")
       sub(/^[[:space:]]*#[[:space:]]?/, "", $0)
 
-      # Skip separator-only lines (after stripping "#"):
-      # e.g. "#####", "=====", "-----", "***", "~~~~"
       if ($0 ~ /^[[:space:]]*([#=_\-*~.]+)[[:space:]]*$/)
         next
 
@@ -106,6 +99,12 @@ print_tier_description() {
     }
   ' "$1"
 }
+
+###############################################################################
+# PRE-FLIGHT
+###############################################################################
+[ -d "$INSTALLATION_DIR" ] || { uiln "${ERR} Missing installation dir: $INSTALLATION_DIR"; exit 1; }
+[ -d "$PKG_DIR" ] || { uiln "${ERR} Missing packages dir: $PKG_DIR"; exit 1; }
 
 ###############################################################################
 # SUDO WARM-UP
@@ -123,20 +122,12 @@ if [ -z "${SUDO_KEEPALIVE_PID:-}" ]; then
 fi
 
 ###############################################################################
-# TIER ORDER (auto-discover from installs/*.packages)
-#
-# Expected naming:
-#   NN-name.packages   (e.g. 00-base.packages, 10-helpers.packages, ...)
-#
-# Tier label rules:
-#   - Uses filename after numeric prefix and dash: "00-base.packages" -> "base"
-#   - If a file doesn't match NN-name.packages, it's ignored (so stray files won't break installs)
+# TIER ORDER (auto-discover from installation/packages/*.packages)
 ###############################################################################
 discover_tiers() {
   local dir="$1"
   local -a files=()
 
-  # Collect and sort package files (prefix ordering is handled by lexicographic sort)
   while IFS= read -r f; do
     files+=("$f")
   done < <(find "$dir" -maxdepth 1 -type f -name '*.packages' | sort)
@@ -145,8 +136,6 @@ discover_tiers() {
   local base name tier
   for f in "${files[@]}"; do
     base="$(basename "$f")"
-
-    # Only accept NN-name.packages (avoids accidentally treating random files as tiers)
     if [[ "$base" =~ ^([0-9]+)-(.+)\.packages$ ]]; then
       name="${BASH_REMATCH[2]}"
       tier="$name"
@@ -173,7 +162,6 @@ fi
 ###############################################################################
 read_packages_file() {
   local file="$1"
-  # Strip inline comments + whitespace; output NUL-separated for safe array reads
   mapfile -t packages < <(
     sed 's/#.*//' "$file" \
       | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
@@ -186,7 +174,6 @@ read_packages_file() {
 # EXCLUDE SET (global)
 ###############################################################################
 declare -A EXCL=()
-# Global excludes apply across tiers (if you skip something once, it stays skipped later)
 while IFS= read -r line; do
   line="${line#"${line%%[![:space:]]*}"}"
   line="${line%"${line##*[![:space:]]}"}"
@@ -200,7 +187,6 @@ done <<< "$EXCLUDE_PACKAGES"
 declare -A REPOPKG=()
 
 build_repo_cache() {
-  # One-time repo package cache so we can split repo vs AUR quickly without repeated pacman calls
   uiln "${CYAN}${BOLD}Master package install${RESET} (${PKG_DIR})"
   uiln "${RUN} Caching repo package list (pacman -Slq)"
   while IFS= read -r p; do
@@ -230,15 +216,13 @@ interactive_exclude_tier() {
 
   uiln ""
   uiln "${BOLD}${CYAN}[${tier}] Packages${RESET}"
-  local i=1
-  local p
+  local i=1 p
   for p in "${pkgs[@]}"; do
     uiln "  $(printf '%2d' "$i")) $p"
     i=$((i+1))
   done
 
   if [ "$INTERACTIVE" -ne 1 ]; then
-    # Non-interactive mode: install everything (minus global excludes) without prompting
     printf '%s\0' "${pkgs[@]}"
     return 0
   fi
@@ -269,16 +253,12 @@ interactive_exclude_tier() {
 
   local -a out=()
   for ((j=1; j<=${#pkgs[@]}; j++)); do
-    if [[ -n "${drop_idx[$j]+x}" ]]; then
-      continue
-    fi
+    [[ -n "${drop_idx[$j]+x}" ]] && continue
     out+=("${pkgs[$((j-1))]}")
   done
 
   uiln ""
   uiln "${OK} [${tier}] Will install: ${#out[@]} packages"
-
-  # IMPORTANT: selections go to STDOUT for the caller to read -d ''
   printf '%s\0' "${out[@]}"
 }
 
@@ -288,7 +268,6 @@ interactive_exclude_tier() {
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 yay_user() {
-  # Prefer original non-root user when running under sudo
   if [ -n "${SUDO_USER:-}" ]; then
     printf "%s" "$SUDO_USER"
   else
@@ -300,18 +279,14 @@ ensure_yay() {
   [ "$BOOTSTRAP_YAY" -eq 1 ] || return 1
   have_cmd yay && return 0
 
-  # Install build deps up front so makepkg doesn't try to sudo mid-build
   sudo pacman -S --noconfirm --needed git base-devel go >/dev/null 2>&1 || true
 
   local u tmpdir
   u="$(yay_user)"
-  tmpdir=""
   tmpdir="$(mktemp -d)"
 
-  # Only clean up if tmpdir is set
   trap '[ -n "${tmpdir:-}" ] && rm -rf "$tmpdir" 2>/dev/null || true' RETURN
 
-  # Build as normal user (AUR builds should not be done as root)
   su - "$u" -c "
     set -e
     cd '$tmpdir'
@@ -320,7 +295,6 @@ ensure_yay() {
     makepkg -s --noconfirm
   "
 
-  # Install built package as root
   local pkg
   pkg="$(ls -1 "$tmpdir"/yay/yay-*.pkg.tar.* | head -n 1)"
   sudo pacman -U --noconfirm --needed "$pkg"
@@ -340,7 +314,6 @@ install_aur_pkgs() {
   [ "${#pkgs[@]}" -eq 0 ] && return 0
 
   if ! have_cmd yay; then
-    # Special-case: allow the package "yay" itself to trigger bootstrap
     local needs_yay=0 p
     for p in "${pkgs[@]}"; do
       [ "$p" = "yay" ] && needs_yay=1 && break
@@ -364,7 +337,6 @@ install_aur_pkgs() {
   local u
   u="$(yay_user)"
 
-  # If running as root, delegate yay to the real user (yay dislikes root)
   if [ "$(id -u)" -eq 0 ]; then
     su - "$u" -c "yay ${yay_flags[*]} -S ${pkgs[*]}"
   else
@@ -384,7 +356,6 @@ install_tier() {
     return 0
   fi
 
-  # Optional: show description box (top comment block of the tier file)
   local desc=""
   desc="$(print_tier_description "$file" || true)"
   if [ -n "$desc" ]; then
@@ -400,7 +371,6 @@ install_tier() {
   local -a filtered=()
   local p
   for p in "${pkgs[@]}"; do
-    # Apply global excludes first so earlier decisions carry forward to later tiers
     [[ -n "${EXCL[$p]+x}" ]] && continue
     filtered+=("$p")
   done
@@ -410,7 +380,6 @@ install_tier() {
     [ -n "${p:-}" ] && chosen+=("$p")
   done < <(interactive_exclude_tier "$tier" "${filtered[@]}")
 
-  # Anything not chosen is treated as excluded going forward (persistent skip)
   declare -A keep=()
   for p in "${chosen[@]}"; do keep["$p"]=1; done
   for p in "${filtered[@]}"; do
@@ -437,7 +406,6 @@ install_tier() {
   local -a repo_pkgs=()
   local -a aur_pkgs=()
   for p in "${chosen[@]}"; do
-    # Split once so installs are fast and predictable
     if is_repo_pkg "$p"; then repo_pkgs+=("$p"); else aur_pkgs+=("$p"); fi
   done
 

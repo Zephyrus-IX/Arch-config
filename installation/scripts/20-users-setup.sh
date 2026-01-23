@@ -1,8 +1,9 @@
 #!/bin/sh
+set -eu
 
-# groups, sudo, polkit
+TARGET_USER="${SUDO_USER:-$(id -un)}"
 
+[ -x /bin/zsh ] || { echo "20-users-setup: zsh not found at /bin/zsh" >&2; exit 1; }
 
-# Change the user shell to zsh
-chsh -s /bin/zsh
-echo $SHELL
+chsh -s /bin/zsh "$TARGET_USER"
+getent passwd "$TARGET_USER" | cut -d: -f7
