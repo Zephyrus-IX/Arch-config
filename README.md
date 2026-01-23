@@ -98,20 +98,25 @@ Follow the outlined steps below. Each step has a dropdown with detailed instruct
 
   <p>
     Step 12: Swap settings can be left on their defaults. (See below) Change them at your own discretion.
-    <img src=readme-files/in21.png width=600 height=600>
   </p>
+  <img src=readme-files/in21.png width=600 height=600> <br>
+  <br>
 
   <p>
     Step 13: Change the bootloader to be GRUB
-    <img src=readme-files/in20.png width=600 height=600>
-    <img src=readme-files/in21.png width=600 height=600>
-    <img src=readme-files/in22.png width=600 height=600>
-    <img src=readme-files/in23.png width=600 height=600>
-    <img src=readme-files/in24.png width=600 height=600>
-    <img src=readme-files/in25.png width=600 height=600>
-    <img src=readme-files/in26.png width=600 height=600>
-    <img src=readme-files/in27.png width=600 height=600>
   </p>
+  <img src=readme-files/in22.png width=600 height=600> <br>
+  <img src=readme-files/in23.png width=600 height=600> <br>
+  <img src=readme-files/in24.png width=600 height=600> <br>
+  <img src=readme-files/in25.png width=600 height=600> <br>
+  <img src=readme-files/in26.png width=600 height=600> <br>
+  <img src=readme-files/in27.png width=600 height=600> <br>
+  <br>
+
+  <p>
+    Step 14:
+  </p>
+  
   </blockquote>
 </details>
 
