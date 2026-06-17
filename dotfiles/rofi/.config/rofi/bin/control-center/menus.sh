@@ -130,6 +130,18 @@ MENU_OPTIONS_main=(
           "dyn:$HOME/.config/rofi/layouts/launchers/|$HOME/.config/rofi/bin/apply-launcher.sh"
         )
 
+        MENU_PROMPT_swaync="Choose a layout | "
+        MENU_THEME_swaync="$LAYOUTS_DIR/launchers/launcher-picker.rasi"
+        MENU_OPTIONS_swaync=(
+          "dyn:$HOME/.config/swaync/layouts/|$HOME/.config/swaync/bin/switch-layout.sh"
+        )
+
+        MENU_PROMPT_waybar="Choose a layout | "
+        MENU_THEME_waybar="$LAYOUTS_DIR/launchers/launcher-picker.rasi"
+        MENU_OPTIONS_waybar=(
+          "dyn:$HOME/.config/waybar/layouts/|$HOME/.config/waybar/bin/switch-layout.sh"
+        )
+
     MENU_PROMPT_wallpapers="Choose a wallpaper | "
     MENU_THEME_wallpapers="$LAYOUTS_DIR/wall-picker/wall-picker.rasi"
     MENU_OPTIONS_wallpapers=(
