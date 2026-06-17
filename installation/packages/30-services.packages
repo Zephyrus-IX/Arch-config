@@ -30,6 +30,11 @@ wireplumber
 # Networking / Discovery
 nss-mdns
 
+# Bluetooth
+bluez
+bluez-utils
+blueman
+
 # Power / Time
 power-profiles-daemon
 

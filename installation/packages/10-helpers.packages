@@ -26,3 +26,4 @@ rsync
 go
 jq
 yay
+os-prober

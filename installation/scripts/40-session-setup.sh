@@ -1,178 +1,234 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# -----------------------------------------------------------------------------
+###############################################################################
 # 40-session-setup.sh
-# Apply dotfiles using GNU Stow OR copy locally (independent of repo)
 #
 # Modes:
-#   - dev   : stow (symlink) from repo -> $HOME  (repo-dependent)
-#   - local : copy from repo -> $HOME            (repo-independent)
+#   dev   : stow dotfiles into $HOME (repo-dependent)   [FORCE deletes conflicts]
+#   local : copy dotfiles into $HOME (repo-independent)
 #
-# Assumes:
-# - repo already cloned
-# - stow is installed (dev mode)
-# - rsync is installed (local mode)  [you already have it in helpers]
-# - $HOME is available
-# -----------------------------------------------------------------------------
-
+# Designed to work when called by install-setup.sh:
+# - reads prompts from /dev/tty
+# - prints prompts to STDERR
 ###############################################################################
-# CONFIG / PATHS
-###############################################################################
-DOTFILES_DIR="${DOTFILES_DIR:-$HOME/Arch-config/dotfiles}"
 
-STOW_PACKAGES=(
-  hypr
-  swww
-  kitty
-  waybar
-  swaync
-)
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+DOTFILES_DIR="${DOTFILES_DIR:-$ROOT_DIR/dotfiles}"
 
-REAL_CONFIG_ROOTS=(
-  "$HOME/.config/waybar"
-  "$HOME/.config/swaync"
-)
+DEFAULT_MODE="${DEFAULT_MODE:-dev}"      # dev | local
+LOCAL_OVERWRITE="${LOCAL_OVERWRITE:-0}" # only for local mode
+FORCE_DELETE_CONFLICTS="${FORCE_DELETE_CONFLICTS:-1}" # dev mode: 1 = option B
 
-# Default mode if not interactive:
-DEFAULT_MODE="${DEFAULT_MODE:-dev}"   # dev | local
+TTY="/dev/tty"
 
-# Local install overwrite behavior:
-#   0 = never overwrite existing files (safe default)
-#   1 = overwrite existing files
-LOCAL_OVERWRITE="${LOCAL_OVERWRITE:-0}"
+ui()   { printf "%b" "$*" >&2; }
+uiln() { printf "%b\n" "$*" >&2; }
 
-###############################################################################
-# HELPERS
-###############################################################################
-die() { echo "40-session-setup: $*" >&2; exit 1; }
+die() { uiln "40-session-setup: $*"; exit 1; }
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
-prompt_mode() {
-  local mode="${1:-}"
+read_tty() {
+  local __outvar="${1:?outvar required}"
+  local prompt="${2:-}"
+  local ans=""
+  [ -n "$prompt" ] && ui "$prompt"
+  if [ -e "$TTY" ]; then
+    IFS= read -r ans < "$TTY" || true
+  else
+    IFS= read -r ans || true
+  fi
+  printf -v "$__outvar" '%s' "$ans"
+}
 
-  # If MODE is set, respect it (no prompt)
+list_packages() {
+  find "$DOTFILES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort
+}
+
+pick_mode() {
   if [ -n "${MODE:-}" ]; then
-    echo "$MODE"
+    echo "${MODE,,}"
     return 0
   fi
 
-  # Non-interactive: use DEFAULT_MODE
-  if [ ! -t 0 ]; then
+  if [ ! -t 0 ] && [ ! -e "$TTY" ]; then
     echo "$DEFAULT_MODE"
     return 0
   fi
 
-  echo
-  echo "Select dotfiles install mode:"
-  echo "  1) dev   - symlink from repo using stow (recommended for development)"
-  echo "  2) local - copy into ~/.config (independent of repo)"
-  echo
-  read -r -p "Choose [1/2] (default: 1): " ans || true
-  ans="${ans:-1}"
+  uiln ""
+  uiln "Dotfiles install mode:"
+  uiln ""
+  uiln "  1) DEV   (symlink via stow; repo-dependent)"
+  uiln "     - ~/.config points into the repo"
+  uiln "     - GOOD for committing changes"
+  uiln ""
+  uiln "  2) LOCAL (copy into ~/.config; repo-independent)"
+  uiln "     - real files/dirs in ~/.config"
+  uiln "     - GOOD for set-and-forget installs"
+  uiln ""
+
+  local ans=""
+  read_tty ans "Choose [1/2] or type [dev/local] (default: 1): "
+  ans="${ans:-1}"; ans="${ans,,}"
 
   case "$ans" in
-    1) mode="dev" ;;
-    2) mode="local" ;;
-    dev|DEV) mode="dev" ;;
-    local|LOCAL) mode="local" ;;
-    *) mode="dev" ;;
+    1|dev) echo "dev" ;;
+    2|local) echo "local" ;;
+    *) echo "dev" ;;
   esac
-
-  echo "$mode"
 }
 
-ensure_real_roots() {
-  echo "Ensuring local (real) config roots exist:"
-  local dir
-  for dir in "${REAL_CONFIG_ROOTS[@]}"; do
-    echo "  - $dir"
-    mkdir -p "$dir"
-  done
+# Safety: only allow deleting relative paths inside $HOME
+safe_rm_home() {
+  local rel="${1:?relative path required}"
+
+  # disallow empties / weird paths
+  [ -n "$rel" ] || return 0
+  [[ "$rel" != /* ]] || die "refusing to delete absolute path: $rel"
+  [[ "$rel" != *".."* ]] || die "refusing to delete path containing '..': $rel"
+  [[ "$rel" != "." && "$rel" != "./" ]] || die "refusing to delete unsafe path: $rel"
+
+  local target="$HOME/$rel"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    rm -rf -- "$target"
+  fi
 }
 
-###############################################################################
-# DEV MODE (stow)
-###############################################################################
-apply_dev_install() {
-  have_cmd stow || die "stow not found (needed for dev install)"
+# Parse stow dry-run output for:
+# - LINK: <target> => ...
+# - conflicts that mention: existing target <target> ...
+collect_targets_to_delete() {
+  local pkg="${1:?pkg required}"
+  local out
+
+  # run inside dotfiles dir so stow output is consistent
+  out="$(stow -n -v -t "$HOME" "$pkg" 2>&1 || true)"
+
+  # 1) Targets stow intends to create links at (handles full-dir links like .config/rofi)
+  #    LINK: .config/rofi => ...
+  printf "%s\n" "$out" | awk '
+    /^LINK: / {
+      sub(/^LINK: /, "", $0)
+      split($0, a, / => /)
+      print a[1]
+    }
+  '
+
+  # 2) Targets that are explicitly called out as conflicts:
+  #    ... existing target .config/hypr/hyprland.conf ...
+  printf "%s\n" "$out" | awk '
+    /existing target / {
+      for (i=1; i<=NF; i++) {
+        if ($i == "target") {
+          print $(i+1)
+          break
+        }
+      }
+    }
+  '
+}
+
+dev_install() {
+  have_cmd stow || die "stow not found"
+  [ -d "$DOTFILES_DIR" ] || die "dotfiles directory not found: $DOTFILES_DIR"
+
+  mapfile -t pkgs < <(list_packages)
+  [ "${#pkgs[@]}" -gt 0 ] || die "no dotfiles packages found in: $DOTFILES_DIR"
+
+  uiln ""
+  uiln "Dev install: stowing dotfiles into \$HOME (symlinks)"
+  uiln "  dotfiles: $DOTFILES_DIR"
+  uiln "  packages:"
+  printf "    - %s\n" "${pkgs[@]}" >&2
+
   cd "$DOTFILES_DIR"
 
-  echo
-  echo "Applying dotfiles with stow (dev install):"
+  if [ "$FORCE_DELETE_CONFLICTS" -eq 1 ]; then
+    uiln ""
+    uiln "Dev install policy: FORCE DELETE conflicts (Option B)"
+    uiln "  - Any existing target that blocks stow will be removed."
+    uiln "  - This includes dirs like ~/.config/rofi if the package links that dir."
+  fi
+
   local pkg
-  for pkg in "${STOW_PACKAGES[@]}"; do
-    echo "  - $pkg"
+  for pkg in "${pkgs[@]}"; do
+    uiln ""
+    uiln "==> [$pkg] preparing..."
+
+    if [ "$FORCE_DELETE_CONFLICTS" -eq 1 ]; then
+      # De-dupe targets to delete
+      declare -A seen=()
+      while IFS= read -r rel; do
+        rel="${rel//$'\r'/}"
+        rel="$(printf "%s" "$rel" | xargs || true)"
+        [ -n "$rel" ] || continue
+        seen["$rel"]=1
+      done < <(collect_targets_to_delete "$pkg")
+
+      # Delete them
+      for rel in "${!seen[@]}"; do
+        # Only delete if it exists (rm is already safe)
+        if [ -e "$HOME/$rel" ] || [ -L "$HOME/$rel" ]; then
+          uiln "  - removing: ~/$rel"
+          safe_rm_home "$rel"
+        fi
+      done
+    fi
+
+    uiln "==> [$pkg] stowing..."
+    stow -v -t "$HOME" "$pkg"
   done
 
-  stow -t "$HOME" "${STOW_PACKAGES[@]}"
-  echo "Dev install complete (symlinks into repo)."
+  uiln ""
+  uiln "Dev install complete."
 }
 
-###############################################################################
-# LOCAL MODE (copy)
-###############################################################################
-apply_local_install() {
-  have_cmd rsync || die "rsync not found (needed for local install)"
+local_install() {
+  have_cmd rsync || die "rsync not found"
+  [ -d "$DOTFILES_DIR" ] || die "dotfiles directory not found: $DOTFILES_DIR"
 
-  echo
-  echo "Applying dotfiles by copying (local install):"
-  echo "  Source: $DOTFILES_DIR"
-  echo "  Target: $HOME"
-  echo
+  mapfile -t pkgs < <(list_packages)
+  [ "${#pkgs[@]}" -gt 0 ] || die "no dotfiles packages found in: $DOTFILES_DIR"
 
-  if [ "$LOCAL_OVERWRITE" -ne 1 ] && [ -t 0 ]; then
-    read -r -p "Do you want to overwrite existing files? [y/N]: " ow || true
-    case "${ow:-N}" in
-      y|Y|yes|YES) LOCAL_OVERWRITE=1 ;;
-      *) LOCAL_OVERWRITE=0 ;;
-    esac
-  fi
+  uiln ""
+  uiln "Local install: copying dotfiles into \$HOME (repo-independent)"
+  uiln "  source: $DOTFILES_DIR"
+  uiln "  target: $HOME"
 
   local rsync_flags=(-a --no-perms --no-owner --no-group)
   if [ "$LOCAL_OVERWRITE" -eq 1 ]; then
-    rsync_flags+=(--delete)   # makes target match source more closely
-    echo "  Overwrite: YES (will replace existing files; may delete extras under target paths)"
+    rsync_flags+=(--delete)
+    uiln "  overwrite: YES"
   else
     rsync_flags+=(--ignore-existing)
-    echo "  Overwrite: NO (will not replace existing files)"
+    uiln "  overwrite: NO"
   fi
 
-  # Each package is a folder that contains paths like .config/...
-  local pkg src
-  for pkg in "${STOW_PACKAGES[@]}"; do
-    src="$DOTFILES_DIR/$pkg/"
-    [ -d "$src" ] || { echo "  - skipping missing package dir: $pkg"; continue; }
-
-    echo "  - copying: $pkg"
-    rsync "${rsync_flags[@]}" "$src" "$HOME/"
+  local pkg
+  for pkg in "${pkgs[@]}"; do
+    uiln "  - copying: $pkg"
+    rsync "${rsync_flags[@]}" "$DOTFILES_DIR/$pkg/" "$HOME/"
   done
 
-  echo "Local install complete (files copied into ~/.config, independent of repo)."
+  uiln "Local install complete."
 }
 
-###############################################################################
-# MAIN
-###############################################################################
 main() {
-  if [[ ! -d "$DOTFILES_DIR" ]]; then
-    echo "Dotfiles directory not found: $DOTFILES_DIR"
-    echo "Skipping stow/copy step."
-    exit 0
-  fi
-
-  ensure_real_roots
+  [ -d "$DOTFILES_DIR" ] || die "dotfiles directory not found: $DOTFILES_DIR"
 
   local mode
-  mode="$(prompt_mode)"
+  mode="$(pick_mode)"
 
   case "$mode" in
-    dev)   apply_dev_install ;;
-    local) apply_local_install ;;
-    *)     die "unknown mode: $mode (expected dev|local)" ;;
+    dev)   dev_install ;;
+    local) local_install ;;
+    *)     die "unknown MODE: '$mode' (use dev|local)" ;;
   esac
 
-  echo "Done."
+  uiln "Done."
 }
 
 main "$@"
+
